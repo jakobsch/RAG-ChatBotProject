@@ -1,0 +1,25 @@
+# ============================================
+# RAG ChatBot - Python Dependencies
+# ============================================
+# NOTE: Not yet finalized - will be updated during first Sprint 
+# ============================================
+
+# --- RAG Framework ---
+
+# --- PDF Processing ---
+
+# --- Embeddings ---
+
+# --- Vector Database ---
+
+# --- LLM API Client ---
+
+# --- Structured Output ---
+
+# --- Web Frontend ---
+
+# --- Environment & Config ---
+
+# --- Testing ---
+
+# --- Utilities ---

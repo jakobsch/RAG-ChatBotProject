@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.env
+
+# Data
+data/pdfs/
+data/vectorstore/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
