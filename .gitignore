@@ -6,7 +6,10 @@ venv/
 .env
 
 # Data
-data/pdfs/
+# alle PDFs im pdfs-Ordner ignorieren, außer dem Test-PDF
+data/pdfs/*
+!data/pdfs/TabellenTest.pdf
+!data/pdfs/.gitkeep
 data/vectorstore/
 
 # IDE
