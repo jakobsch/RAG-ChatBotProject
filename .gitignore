@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 venv/
 .env
+.venv/
 
 # Data
 # alle PDFs im pdfs-Ordner ignorieren, außer dem Test-PDF
