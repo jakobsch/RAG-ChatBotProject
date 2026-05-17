@@ -5,6 +5,7 @@ __pycache__/
 venv/
 .env
 .venv/
+/test/
 
 # Data
 # alle PDFs im pdfs-Ordner ignorieren, außer dem Test-PDF
@@ -19,3 +20,4 @@ data/vectorstore/
 
 # OS
 .DS_Store
+tests/chunk_testing.py
