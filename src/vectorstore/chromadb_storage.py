@@ -3,6 +3,7 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.vectorstores import VectorStoreRetriever
 
 default_path = Path("data/chroma_vectorstore")
 
@@ -42,3 +43,17 @@ class VectorStore ():
         # Führt die Ähnlichkeitssuche aus
         similar_docs = db.similarity_search(query, k=k)
         return similar_docs
+    
+    def as_retriever(self, search_kwargs: dict = None) -> VectorStoreRetriever:
+        """
+        Verwandelt eure ChromaDB in ein natives LangChain-Suchobjekt (Runnable).
+        Ermöglicht der Chain, automatisch Dokumente abzurufen.
+        """
+        # Standardmäßig werden die 3 relevantesten Dokumente gesucht
+        kwargs = search_kwargs or {"k": 3}
+        
+        db = Chroma(
+            persist_directory=self.persist_directory,
+            embedding_function=self.embeddings,
+        )
+        return db.as_retriever(search_kwargs=kwargs)
