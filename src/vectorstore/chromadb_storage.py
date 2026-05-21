@@ -4,59 +4,36 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 
-class VectorStorageModule():
+persistent_directory = "/home/linus/projekte/RAG-ChatBotProject/data/chroma_vectorstore"
 
-    def __init__(self, persist_directory: str = "./data/chroma_vectorstore"):
-        
-        # Definition des verwendeten Embedding Model
+embeddings = HuggingFaceEmbeddings("all-Mini LM-V6-v2")
 
-        self.embeddings = HuggingFaceEmbeddings(model = "all-MiniLM-L6-v2")
+def save_documents_to_db(chunks: List[Document]) -> None:
+    """Nimmt eine Liste von Langchain-Dokumenten entgegen und speichert sie persistent."""
+    if not chunks:
+        print("Keine Dokumente zum Speichern übergeben.")
+        return
 
-        # Getrennte Collection für reine Text Daten und Tabellen Daten zur RAG Optimierung
-
-        self.text_store = Chroma(
-            collection_name="pdf_texts",
-            embedding_function=self.embeddings,
-            persist_directory=persist_directory
-        )
-
-        self.table_store = Chroma(
-            collection_name="pdf_tables",
-            embedding_function=self.embeddings,
-            persist_directory=persist_directory
-        )
-
-    def check_for_document_in_db():
-        pass
-
-    def store_chunks (self, chunks: List[Document]):
-
-        if not chunks:
-            print ("No Chunks for storage detected")
-
-        text_chunks = [c for c in chunks if c.metadata.get("type") == "text"]
-        table_chunks = [c for c in chunks if c.metadata.get("type") == "table"]
-
-        try:
-
-            if text_chunks:
-                self.text_store.add_documents(text_chunks)
-                print(f"{len(text_chunks)} Chunks successfully stored")
-
-        except Exception as e:
-            print(f"The following exception occured while storing the text chunks: {e}")
-
-        try:
-
-            if table_chunks:
-                self.table_store.add_documents(table_chunks)
-                print(f"{len(table_chunks)} Chunks successfully stored")
-
-        except Exception as e:
-
-            print(f"The following exception occured while storing the table chunks: {e}")
-
-    def query_store():
-        pass
+    # Initialisiert Chroma mit dem Speicherpfad und fügt Dokumente hinzu
+    db = Chroma.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        persistent_directory=persistent_directory,
+    )
+    print(f"{len(chunks)} Chunks erfolgreich in {persistent_directory} gespeichert.")
 
 
+def retrieve_similar_documents(query: str, k: int = 3) -> List[Document]:
+    """Sucht nach den ähnlichsten Dokumenten basierend auf einer User-Query."""
+    if not query.strip():
+        raise ValueError("Die Suchanfrage darf nicht leer sein.")
+
+    # Lädt die existierende persistente Datenbank
+    db = Chroma(
+        persistent_directory=persistent_directory,
+        embedding_function=embeddings,
+    )
+
+    # Führt die Ähnlichkeitssuche aus
+    similar_docs = db.similarity_search(query, k=k)
+    return similar_docs
