@@ -12,7 +12,7 @@ venv/
 data/pdfs/*
 !data/pdfs/TabellenTest.pdf
 !data/pdfs/.gitkeep
-data/vectorstore/
+data/chroma_vectorstore/
 
 # IDE
 .idea/
