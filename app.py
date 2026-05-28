@@ -1,8 +1,276 @@
 """
-Sustainability Report RAG ChatBot - Streamlit Application
-
-Main entry point for the web application.
-Run with: streamlit run app.py
+app.py  –  Streamlit Chat UI für den RAG-Chatbot
+Starten mit: streamlit run app.py
 """
 
-# TODO: Implement Streamlit UI
+import sys
+import json
+import tempfile
+from pathlib import Path
+
+import streamlit as st
+
+# Projekt-Root zum Python-Pfad hinzufügen damit src-Importe funktionieren
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from src.pdf_processing.ingestion import load_and_chunk
+from src.vectorstore.chromadb_storage import VectorStore
+from src.rag.rag_chain import ask
+
+# ── Seitenkonfiguration ────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Sustainability Report Chatbot",
+    page_icon="🌱",
+    layout="wide",
+)
+
+# ── CSS ───────────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap');
+
+  html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
+  }
+  h1, h2, h3 {
+    font-family: 'DM Serif Display', serif;
+  }
+
+  /* Hintergrund */
+  .stApp { background-color: #f4f7f4; }
+
+  /* Sidebar */
+  [data-testid="stSidebar"] {
+    background-color: #1a2e1a;
+    color: #e8f0e8;
+  }
+  [data-testid="stSidebar"] * { color: #e8f0e8 !important; }
+  [data-testid="stSidebar"] .stButton > button {
+    background-color: #2d5a2d;
+    color: #e8f0e8;
+    border: 1px solid #4a8c4a;
+    border-radius: 8px;
+    width: 100%;
+  }
+  [data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #4a8c4a;
+  }
+
+  /* Chat-Nachrichten */
+  .chat-user {
+    background: #2d5a2d;
+    color: #ffffff;
+    padding: 12px 16px;
+    border-radius: 18px 18px 4px 18px;
+    margin: 8px 0 8px 15%;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .chat-bot {
+    background: #ffffff;
+    color: #1a2e1a;
+    padding: 12px 16px;
+    border-radius: 18px 18px 18px 4px;
+    margin: 8px 15% 8px 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    border: 1px solid #d4e6d4;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .source-badge {
+    display: inline-block;
+    background: #e8f4e8;
+    color: #2d5a2d;
+    border: 1px solid #b0d4b0;
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    margin: 4px 4px 0 0;
+  }
+  .status-box {
+    background: #e8f4e8;
+    border-left: 4px solid #2d5a2d;
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.9rem;
+    color: #1a2e1a;
+    margin-bottom: 12px;
+  }
+  .fake-warning {
+    background: #fff8e1;
+    border-left: 4px solid #f9a825;
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.85rem;
+    color: #5d4037;
+    margin-bottom: 12px;
+  }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Session State initialisieren ───────────────────────────────────────────────
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []      # [{"role": "user"|"bot", "text": ...}]
+if "retriever" not in st.session_state:
+    st.session_state.retriever = None
+if "pdf_name" not in st.session_state:
+    st.session_state.pdf_name = None
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+
+# ── Sidebar: PDF Upload ────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🌱 Sustainability\nReport Chatbot")
+    st.markdown("---")
+    st.markdown("### PDF hochladen")
+
+    uploaded_file = st.file_uploader(
+        "Nachhaltigkeitsbericht auswählen",
+        type=["pdf"],
+        help="Nur PDF-Dateien werden unterstützt.",
+    )
+
+    if uploaded_file is not None:
+        if st.button("📄 PDF verarbeiten"):
+            with st.spinner("PDF wird verarbeitet..."):
+                try:
+                    # PDF temporär speichern damit load_and_chunk einen Pfad bekommt
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, suffix=".pdf"
+                    ) as tmp:
+                        tmp.write(uploaded_file.read())
+                        tmp_path = tmp.name
+
+                    # Chunking
+                    chunks = load_and_chunk(tmp_path)
+
+                    # In ChromaDB speichern
+                    vs = VectorStore()
+                    vs.save_documents_to_db(chunks)
+
+                    # Retriever für die Chat-Session speichern
+                    st.session_state.retriever = vs.as_retriever(
+                        search_kwargs={"k": 4}
+                    )
+                    st.session_state.pdf_name = uploaded_file.name
+                    st.session_state.chat_history = []  # neues PDF = neuer Chat
+
+                    st.success(f"✅ {len(chunks)} Chunks gespeichert!")
+
+                except Exception as e:
+                    st.error(f"Fehler beim Verarbeiten: {e}")
+
+    # Status anzeigen
+    if st.session_state.pdf_name:
+        st.markdown(
+            f'<div class="status-box">📑 <b>{st.session_state.pdf_name}</b><br>'
+            f"ist geladen und bereit.</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    # Chat leeren
+    if st.button("🗑️ Chat leeren"):
+        st.session_state.chat_history = []
+        st.rerun()
+
+    # JSON Export (wird unten befüllt)
+    st.markdown("### JSON Export")
+    st.caption("Nach dem Laden eines PDFs können Key-Daten exportiert werden.")
+    if st.button("📥 JSON generieren & herunterladen"):
+        if st.session_state.retriever is None:
+            st.warning("Bitte zuerst ein PDF hochladen.")
+        else:
+            with st.spinner("Extrahiere Key-Daten..."):
+                # Fragt das LLM nach jedem JSON-Feld einzeln
+                felder = [
+                    "CO2", "NOX", "Number_of_Electric_Vehicles",
+                    "Impact", "Risks", "Opportunities",
+                    "Strategy", "Actions", "Adopted_policies", "Targets"
+                ]
+                json_data = {"name": st.session_state.pdf_name}
+                for feld in felder:
+                    result = ask(
+                        f"Was steht im Bericht über {feld}? Kurze Zusammenfassung.",
+                        st.session_state.retriever,
+                    )
+                    json_data[feld] = result["answer"]
+
+                json_str = json.dumps(json_data, ensure_ascii=False, indent=2)
+                st.download_button(
+                    label="⬇️ JSON herunterladen",
+                    data=json_str,
+                    file_name=f"{st.session_state.pdf_name}_extract.json",
+                    mime="application/json",
+                )
+
+# ── Hauptbereich: Chat ─────────────────────────────────────────────────────────
+st.markdown("# Frag deinen Nachhaltigkeitsbericht")
+
+# Fake-Mode Hinweis
+from src.rag.rag_chain import FAKE_MODE
+if FAKE_MODE:
+    st.markdown(
+        '<div class="fake-warning">⚠️ <b>Fake-Modus aktiv</b> – '
+        "Das LLM ist noch nicht verbunden. Antworten sind Platzhalter. "
+        "Sobald der GWDG API Key eingetragen ist, einfach <code>FAKE_MODE = False</code> "
+        "in <code>src/rag/rag_chain.py</code> setzen.</div>",
+        unsafe_allow_html=True,
+    )
+
+# Kein PDF geladen
+if st.session_state.retriever is None:
+    st.info("👈 Lade zuerst einen Nachhaltigkeitsbericht in der Sidebar hoch.")
+else:
+    # Chat-Verlauf anzeigen
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(
+                f'<div class="chat-user">{msg["text"]}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<div class="chat-bot">{msg["text"]}</div>',
+                unsafe_allow_html=True,
+            )
+            # Quellen als Badges
+            if msg.get("sources"):
+                badges = "".join(
+                    f'<span class="source-badge">Seite {s["page"]} · {s["section"]}</span>'
+                    for s in msg["sources"]
+                )
+                st.markdown(badges, unsafe_allow_html=True)
+
+    # Eingabefeld
+    st.markdown("---")
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        user_input = st.text_input(
+            "Deine Frage",
+            placeholder="z.B. Wie hat sich der CO2-Ausstoß zwischen 2023 und 2024 verändert?",
+            label_visibility="collapsed",
+        )
+    with col2:
+        send = st.button("Senden", use_container_width=True)
+
+    if send and user_input.strip():
+        # Frage in History speichern
+        st.session_state.chat_history.append(
+            {"role": "user", "text": user_input}
+        )
+
+        # Antwort holen
+        with st.spinner("Suche relevante Stellen..."):
+            result = ask(user_input, st.session_state.retriever)
+
+        # Antwort in History speichern
+        st.session_state.chat_history.append(
+            {
+                "role": "bot",
+                "text": result["answer"],
+                "sources": result["sources"],
+            }
+        )
+        st.rerun()
