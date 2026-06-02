@@ -8,6 +8,8 @@ Sobald API Key vorhanden: FAKE_MODE = False setzen und GWDG-Zugangsdaten in .env
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from typing import Optional
 from langchain_core.documents import Document
 
@@ -16,7 +18,7 @@ from langchain_core.documents import Document
 # True  = kein LLM nötig, gibt Platzhalter-Antwort zurück
 # False = echter GWDG API Call (braucht API Key in .env)
 # ============================================================
-FAKE_MODE = True
+FAKE_MODE = False
 
 
 def build_prompt(question: str, chunks: list[Document]) -> str:
@@ -116,7 +118,7 @@ def _call_gwdg_llm(prompt: str) -> str:
         )
 
         response = client.chat.completions.create(
-            model=os.getenv("GWDG_MODEL", "meta-llama-3.1-70b-instruct"),
+            model=os.getenv("GWDG_MODEL_NAME", "meta-llama-3.1-70b-instruct"),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,  # niedrig = weniger Halluzinationen
             max_tokens=1024,
