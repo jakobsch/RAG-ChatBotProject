@@ -1,59 +1,201 @@
-from typing import List
+from typing import List, Optional
 from pathlib import Path
+ 
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.vectorstores import VectorStoreRetriever
-
+from langchain_classic.retrievers import EnsembleRetriever, ContextualCompressionRetriever
+from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
+from langchain_community.retrievers import BM25Retriever
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+ 
+ 
 default_path = Path("data/chroma_vectorstore")
-
-class VectorStore ():
-
-    def __init__(self, persist_directory: str = str(default_path), model_name: str = "all-MiniLM-L6-v2"):
-    
-        self.persist_directory = persist_directory
-        self.embeddings = HuggingFaceEmbeddings(model= model_name)
-
+ 
+ 
+class VectorStore:
+    """
+    VectorStore mit Hybrid Search (BM25 + Chroma) und Cross-Encoder Reranking.
+ 
+    Pipeline:
+        Query
+          ├─ BM25Retriever       (Keyword-Suche, exakte Treffer)
+          └─ ChromaRetriever     (Semantische Suche, Bedeutungsähnlichkeit)
+                    │
+               EnsembleRetriever (RRF-Fusion beider Ergebnislisten)
+                    │
+            CrossEncoderReranker (bewertet Query-Dokument-Paare neu)
+                    │
+                Top-K Dokumente
+    """
+ 
+    # Bewährte Standardmodelle – können im Konstruktor überschrieben werden
+    DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+    DEFAULT_CROSS_ENCODER   = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+ 
+    def __init__(
+        self,
+        persist_directory: str = str(default_path),
+        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+        cross_encoder_model: str = DEFAULT_CROSS_ENCODER,
+    ):
+        self.persist_directory  = persist_directory
+        self.embeddings         = HuggingFaceEmbeddings(model_name=embedding_model)
+        self.cross_encoder      = HuggingFaceCrossEncoder(model_name=cross_encoder_model)
+ 
+        # Wird beim ersten Aufruf von _load_chroma() befüllt
+        self._chroma_db: Optional[Chroma] = None
+ 
+        # BM25 benötigt die rohen Dokumente im Speicher
+        self._bm25_docs: List[Document] = []
+ 
+    # ------------------------------------------------------------------
+    # Interne Hilfsmethoden
+    # ------------------------------------------------------------------
+ 
+    def _load_chroma(self) -> Chroma:
+        """Lädt die persistente ChromaDB (lazy, wird nur einmal geladen)."""
+        if self._chroma_db is None:
+            self._chroma_db = Chroma(
+                persist_directory=self.persist_directory,
+                embedding_function=self.embeddings,
+            )
+        return self._chroma_db
+ 
+    def _build_bm25_retriever(self, k: int) -> BM25Retriever:
+        """Erstellt einen BM25Retriever aus den gespeicherten Dokumenten."""
+        if not self._bm25_docs:
+            raise ValueError(
+                "Keine Dokumente für BM25 vorhanden. "
+                "Rufe zuerst save_documents_to_db() auf."
+            )
+        retriever   = BM25Retriever.from_documents(self._bm25_docs)
+        retriever.k = k
+        return retriever
+ 
+    # ------------------------------------------------------------------
+    # Öffentliche API
+    # ------------------------------------------------------------------
+ 
     def save_documents_to_db(self, chunks: List[Document]) -> None:
-        """Nimmt eine Liste von Langchain-Dokumenten entgegen und speichert sie persistent."""
+        """
+        Speichert Dokumente persistent in ChromaDB und hält sie
+        zusätzlich im Speicher für BM25 vor.
+        """
         if not chunks:
             print("Keine Dokumente zum Speichern übergeben.")
             return
-
-        # Initialisiert Chroma mit dem Speicherpfad und fügt Dokumente hinzu
-        db = Chroma.from_documents(
+ 
+        # BM25-Kopie im Speicher halten
+        self._bm25_docs = chunks
+ 
+        # In ChromaDB persistieren (setzt den Cache zurück)
+        self._chroma_db = Chroma.from_documents(
             documents=chunks,
             embedding=self.embeddings,
             persist_directory=self.persist_directory,
         )
-        print(f"{len(chunks)} Chunks erfolgreich in {self.persist_directory} gespeichert.")
-
-
+        print(f"{len(chunks)} Chunks erfolgreich in '{self.persist_directory}' gespeichert.")
+ 
+    def load_documents_for_bm25(self, chunks: List[Document]) -> None:
+        """
+        Lädt Dokumente ausschließlich in den BM25-Speicher, ohne ChromaDB
+        zu verändern. Nützlich, wenn ChromaDB bereits befüllt ist und du
+        BM25 nachträglich aktivieren möchtest.
+        """
+        self._bm25_docs = chunks
+        print(f"{len(chunks)} Dokumente für BM25 geladen.")
+ 
     def retrieve_similar_documents(self, query: str, k: int = 3) -> List[Document]:
-        """Sucht nach den ähnlichsten Dokumenten basierend auf einer User-Query."""
+        """Einfache semantische Ähnlichkeitssuche (Baseline)."""
         if not query.strip():
             raise ValueError("Die Suchanfrage darf nicht leer sein.")
-
-        # Lädt die existierende persistente Datenbank
-        db = Chroma(
-            persist_directory=self.persist_directory,
-            embedding_function=self.embeddings,
-        )
-
-        # Führt die Ähnlichkeitssuche aus
-        similar_docs = db.similarity_search(query, k=k)
-        return similar_docs
-    
+        db = self._load_chroma()
+        return db.similarity_search(query, k=k)
+ 
     def as_retriever(self, search_kwargs: dict = None) -> VectorStoreRetriever:
-        """
-        Verwandelt eure ChromaDB in ein natives LangChain-Suchobjekt (Runnable).
-        Ermöglicht der Chain, automatisch Dokumente abzurufen.
-        """
-        # Standardmäßig werden die 3 relevantesten Dokumente gesucht
+        """Standard-Retriever (semantisch, MMR-fähig)."""
         kwargs = search_kwargs or {"k": 3}
-        
-        db = Chroma(
-            persist_directory=self.persist_directory,
-            embedding_function=self.embeddings,
+        return self._load_chroma().as_retriever(search_kwargs=kwargs)
+ 
+    def as_hybrid_reranking_retriever(
+        self,
+        k: int = 3,
+        candidate_k: int = 20,
+        bm25_weight: float = 0.4,
+        vector_weight: float = 0.6,
+    ) -> ContextualCompressionRetriever:
+        """
+        Gibt einen Retriever zurück, der Hybrid Search und Reranking kombiniert.
+ 
+        Ablauf:
+            1. BM25 und Chroma rufen je `candidate_k` Dokumente ab.
+            2. EnsembleRetriever fusioniert beide Listen via Reciprocal Rank Fusion.
+            3. CrossEncoderReranker bewertet die fusionierten Kandidaten neu
+               und gibt die besten `k` Dokumente zurück.
+ 
+        Args:
+            k:              Anzahl der finalen Dokumente nach dem Reranking.
+            candidate_k:    Anzahl der Kandidaten pro Retriever vor dem Reranking.
+                            Höher = besser Recall, aber langsamer.
+            bm25_weight:    Gewicht des BM25-Retrievers in der Fusion (0–1).
+            vector_weight:  Gewicht des Vektor-Retrievers in der Fusion (0–1).
+                            bm25_weight + vector_weight sollte 1.0 ergeben.
+ 
+        Returns:
+            ContextualCompressionRetriever (LangChain Runnable, Chain-kompatibel)
+        """
+        if not self._bm25_docs:
+            raise ValueError(
+                "BM25-Dokumente fehlen. Rufe save_documents_to_db() oder "
+                "load_documents_for_bm25() auf, bevor du diesen Retriever verwendest."
+            )
+ 
+        # --- Schritt 1: Basis-Retriever aufbauen ---
+        bm25_retriever = self._build_bm25_retriever(k=candidate_k)
+ 
+        vector_retriever = self._load_chroma().as_retriever(
+            search_kwargs={"k": candidate_k}
         )
-        return db.as_retriever(search_kwargs=kwargs)
+ 
+        # --- Schritt 2: Hybrid-Fusion via Reciprocal Rank Fusion ---
+        ensemble = EnsembleRetriever(
+            retrievers=[bm25_retriever, vector_retriever],
+            weights=[bm25_weight, vector_weight],
+        )
+ 
+        # --- Schritt 3: Cross-Encoder Reranking ---
+        reranker = CrossEncoderReranker(
+            model=self.cross_encoder,
+            top_n=k,
+        )
+ 
+        return ContextualCompressionRetriever(
+            base_compressor=reranker,
+            base_retriever=ensemble,
+        )
+ 
+    def search_hybrid_reranked(
+        self,
+        query: str,
+        k: int = 3,
+        candidate_k: int = 20,
+        bm25_weight: float = 0.4,
+        vector_weight: float = 0.6,
+    ) -> List[Document]:
+        """
+        Direkte Suchmethode (ohne Retriever-Objekt) — praktisch für schnelle Tests.
+ 
+        Gibt die `k` relevantesten Dokumente nach Hybrid Search + Reranking zurück.
+        """
+        if not query.strip():
+            raise ValueError("Die Suchanfrage darf nicht leer sein.")
+ 
+        retriever = self.as_hybrid_reranking_retriever(
+            k=k,
+            candidate_k=candidate_k,
+            bm25_weight=bm25_weight,
+            vector_weight=vector_weight,
+        )
+        return retriever.invoke(query)
