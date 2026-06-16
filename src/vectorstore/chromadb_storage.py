@@ -10,7 +10,6 @@ from langchain_classic.retrievers import EnsembleRetriever, ContextualCompressio
 from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
- 
 
 default_path = Path(__file__).parent.parent / "data" / "chroma_vectorstore"
  
