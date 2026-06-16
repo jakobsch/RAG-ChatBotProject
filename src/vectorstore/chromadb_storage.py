@@ -1,5 +1,6 @@
 from typing import List, Optional
 from pathlib import Path
+import shutil
  
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
@@ -10,8 +11,8 @@ from langchain_classic.retrievers.document_compressors import CrossEncoderRerank
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
  
- 
-default_path = Path("data/chroma_vectorstore")
+
+default_path = Path(__file__).parent.parent / "data" / "chroma_vectorstore"
  
  
 class VectorStore:
@@ -40,16 +41,30 @@ class VectorStore:
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         cross_encoder_model: str = DEFAULT_CROSS_ENCODER,
     ):
-        self.persist_directory  = persist_directory
-        self.embeddings         = HuggingFaceEmbeddings(model_name=embedding_model)
-        self.cross_encoder      = HuggingFaceCrossEncoder(model_name=cross_encoder_model)
+        self.persist_directory    = persist_directory
+        self._embeddings_model    = embedding_model
+        self._cross_encoder_model = cross_encoder_model
+
+        # Lazy-loaded
+        self._embeddings:   Optional[HuggingFaceEmbeddings]    = None
+        self._cross_encoder: Optional[HuggingFaceCrossEncoder] = None
+        self._chroma_db:    Optional[Chroma]                   = None
+        self._bm25_docs:    List[Document]                     = []
  
-        # Wird beim ersten Aufruf von _load_chroma() befüllt
-        self._chroma_db: Optional[Chroma] = None
- 
-        # BM25 benötigt die rohen Dokumente im Speicher
-        self._bm25_docs: List[Document] = []
- 
+    @property
+    def embeddings(self) -> HuggingFaceEmbeddings:
+        if self._embeddings is None:
+            print("Lade Embedding-Modell...", flush=True)
+            self._embeddings = HuggingFaceEmbeddings(model_name=self._embeddings_model)
+        return self._embeddings
+
+    @property
+    def cross_encoder(self) -> HuggingFaceCrossEncoder:
+        if self._cross_encoder is None:
+            print("Lade Cross-Encoder...", flush=True)
+            self._cross_encoder = HuggingFaceCrossEncoder(model_name=self._cross_encoder_model)
+        return self._cross_encoder
+    
     # ------------------------------------------------------------------
     # Interne Hilfsmethoden
     # ------------------------------------------------------------------
@@ -62,6 +77,11 @@ class VectorStore:
                 embedding_function=self.embeddings,
             )
         return self._chroma_db
+    
+    def get_chunk_count(self) -> int:
+        """Gibt die genaue Anzahl der Chunks in der persistenten ChromaDB zurück."""
+        db = self._load_chroma()
+        return db._collection.count()
  
     def _build_bm25_retriever(self, k: int) -> BM25Retriever:
         """Erstellt einen BM25Retriever aus den gespeicherten Dokumenten."""
@@ -78,25 +98,76 @@ class VectorStore:
     # Öffentliche API
     # ------------------------------------------------------------------
  
+    def _get_stored_sources(self) -> set[str]:
+        """
+        Gibt alle eindeutigen 'filename'-Werte (Dateinamen) zurück,
+        die bereits in ChromaDB gespeichert sind.
+        """
+        db = self._load_chroma()
+        result = db._collection.get(include=["metadatas"])
+        sources = set()
+        for metadata in result.get("metadatas", []):
+            if metadata and "filename" in metadata:
+                sources.add(Path(metadata["filename"]).name)
+        return sources
+    
+    def clear_database(self) -> None:
+        """
+        Löscht die gesamte ChromaDB auf Dateisystemebene und setzt alle Caches zurück.
+        Sicherer als collection.delete(), da keine verwaisten Daten übrig bleiben.
+        """
+        self._chroma_db = None
+        self._bm25_docs = []
+
+        path = Path(self.persist_directory)
+        if path.exists():
+            shutil.rmtree(path)
+            print(f"ChromaDB unter '{path}' vollständig gelöscht.")
+        else:
+            print("Kein Datenbankverzeichnis gefunden – nichts zu löschen.")
+
     def save_documents_to_db(self, chunks: List[Document]) -> None:
         """
         Speichert Dokumente persistent in ChromaDB und hält sie
         zusätzlich im Speicher für BM25 vor.
+
+        Bereits gespeicherte PDFs (erkannt am Dateinamen im Metadatenfeld 'filename')
+        werden übersprungen — nur neue Chunks werden hinzugefügt (Upsert-Logik).
         """
         if not chunks:
             print("Keine Dokumente zum Speichern übergeben.")
             return
- 
-        # BM25-Kopie im Speicher halten
+
+        # --- Deduplizierung: bereits gespeicherte Quellen ermitteln ---
+        stored_sources = self._get_stored_sources()
+
+        new_chunks = [
+            chunk for chunk in chunks
+            if Path(chunk.metadata.get("filename", "")).name not in stored_sources
+        ]
+
+        skipped_sources = {
+            Path(chunk.metadata.get("filename", "")).name
+            for chunk in chunks
+        } - {Path(chunk.metadata.get("filename", "")).name for chunk in new_chunks}
+
+        if skipped_sources:
+            print(f"Bereits vorhanden (übersprungen): {', '.join(sorted(skipped_sources))}")
+
+        if not new_chunks:
+            print("Keine neuen Dokumente zum Speichern – alles bereits in der DB.")
+            # BM25 trotzdem mit allen Chunks aktualisieren (für laufende Session)
+            self._bm25_docs = chunks
+            return
+
+        # --- Neue Chunks in ChromaDB einfügen ---
+        db = self._load_chroma()
+        db.add_documents(new_chunks)
+
+        # BM25-Kopie im Speicher mit allen Chunks aktualisieren
         self._bm25_docs = chunks
- 
-        # In ChromaDB persistieren (setzt den Cache zurück)
-        self._chroma_db = Chroma.from_documents(
-            documents=chunks,
-            embedding=self.embeddings,
-            persist_directory=self.persist_directory,
-        )
-        print(f"{len(chunks)} Chunks erfolgreich in '{self.persist_directory}' gespeichert.")
+
+        print(f"{len(new_chunks)} neue Chunks aus {len({Path(c.metadata.get('filename','')).name for c in new_chunks})} PDF(s) gespeichert.")
  
     def load_documents_for_bm25(self, chunks: List[Document]) -> None:
         """
@@ -106,18 +177,6 @@ class VectorStore:
         """
         self._bm25_docs = chunks
         print(f"{len(chunks)} Dokumente für BM25 geladen.")
- 
-    def retrieve_similar_documents(self, query: str, k: int = 3) -> List[Document]:
-        """Einfache semantische Ähnlichkeitssuche (Baseline)."""
-        if not query.strip():
-            raise ValueError("Die Suchanfrage darf nicht leer sein.")
-        db = self._load_chroma()
-        return db.similarity_search(query, k=k)
- 
-    def as_retriever(self, search_kwargs: dict = None) -> VectorStoreRetriever:
-        """Standard-Retriever (semantisch, MMR-fähig)."""
-        kwargs = search_kwargs or {"k": 3}
-        return self._load_chroma().as_retriever(search_kwargs=kwargs)
  
     def as_hybrid_reranking_retriever(
         self,
@@ -176,6 +235,8 @@ class VectorStore:
             base_retriever=ensemble,
         )
  
+ # Test Funktion
+
     def search_hybrid_reranked(
         self,
         query: str,
@@ -199,3 +260,10 @@ class VectorStore:
             vector_weight=vector_weight,
         )
         return retriever.invoke(query)
+    
+if __name__ == "__main":
+    vc = VectorStore()
+    vc._load_chroma()
+    query = "Welche Ziele hat sich das Unternehmen in Bezug auf Nachhaltigkeit gesetzt?"
+    retrieved_docs = vc.search_hybrid_reranked(query)
+    print(retrieved_docs)
