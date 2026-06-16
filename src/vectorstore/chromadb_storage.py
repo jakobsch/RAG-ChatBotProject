@@ -260,9 +260,9 @@ class VectorStore:
         )
         return retriever.invoke(query)
     
-if __name__ == "__main":
+if __name__ == "__main__":
     vc = VectorStore()
     vc._load_chroma()
     query = "Welche Ziele hat sich das Unternehmen in Bezug auf Nachhaltigkeit gesetzt?"
     retrieved_docs = vc.search_hybrid_reranked(query)
-    print(retrieved_docs)
+    print(len(retrieved_docs))
