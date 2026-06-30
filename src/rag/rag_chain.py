@@ -43,16 +43,12 @@ def build_prompt(question: str, chunks: list[Document]) -> str:
         filename = metadata.get("filename", "")
 
         context_parts.append(
-            f"""
-[Quelle {i}]
-Datei: {filename}
-Seite: {page}
-Abschnitt: {section}
-Inhaltstyp: {chunk_type}
-
-Inhalt:
-{doc.page_content}
-"""
+            f"[Quelle {i}]\n"
+            f"Datei: {filename}\n"
+            f"Seite: {page}\n"
+            f"Abschnitt: {section}\n"
+            f"Inhaltstyp: {chunk_type}\n\n"
+            f"Inhalt:\n{doc.page_content}"
         )
 
     context = "\n\n---\n\n".join(context_parts)
