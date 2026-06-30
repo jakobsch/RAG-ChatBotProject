@@ -6,6 +6,7 @@ Starten mit: streamlit run app.py
 import sys
 import json
 import tempfile
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -134,28 +135,27 @@ with st.sidebar:
         if st.button("📄 PDF verarbeiten"):
             with st.spinner("PDF wird verarbeitet..."):
                 try:
-                    # PDF temporär speichern damit load_and_chunk einen Pfad bekommt
-                    with tempfile.NamedTemporaryFile(
-                        delete=False, suffix=".pdf"
-                    ) as tmp:
-                        tmp.write(uploaded_file.read())
-                        tmp_path = tmp.name
+                    # ✅ Neu: TemporaryDirectory mit originalem Dateinamen
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        tmp_path = os.path.join(tmp_dir, uploaded_file.name)
+                        with open(tmp_path, "wb") as f:
+                            f.write(uploaded_file.read())
 
-                    # Chunking
-                    chunks = load_and_chunk(tmp_path)
+                        # Chunking
+                        chunks = load_and_chunk(tmp_path)
 
-                    # In ChromaDB speichern
-                    vs = VectorStore()
-                    vs.save_documents_to_db(chunks)
+                        # In ChromaDB speichern
+                        vs = VectorStore()
+                        is_new = vs.save_documents_to_db(chunks)
 
-                    # Retriever für die Chat-Session speichern
-                    st.session_state.retriever = vs.as_retriever(
-                        search_kwargs={"k": 4}
-                    )
-                    st.session_state.pdf_name = uploaded_file.name
-                    st.session_state.chat_history = []  # neues PDF = neuer Chat
+                        # Retriever für die Chat-Session speichern
+                        st.session_state.retriever = vs.as_hybrid_reranking_retriever()
+                        st.session_state.chat_history = []  # neues PDF = neuer Chat
 
-                    st.success(f"✅ {len(chunks)} Chunks gespeichert!")
+                    if is_new:
+                        st.success(f"✅ {len(chunks)} Chunks gespeichert!")
+                    else:
+                        ("Das hochgeladene PDF ist bereits in der Datenbank gespeichert")
 
                 except Exception as e:
                     st.error(f"Fehler beim Verarbeiten: {e}")
