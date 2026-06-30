@@ -4,7 +4,7 @@ src/rag/rag_chain.py
 Baut die RAG-Chain: Frage + relevante Chunks -> Antwort vom LLM.
 
 Aktuell: FAKE_MODE = True  -> kein echter API-Call, Platzhalter-Antwort
-Sobald API Key vorhanden: FAKE_MODE = False setzen und GWDG-Zugangsdaten in .env eintragen
+Sobald API Key vorhanden: FAKE_MODE = False setzen und GWDG-Zugangsdaten in ..env eintragen
 """
 
 import os
@@ -16,7 +16,7 @@ from langchain_core.documents import Document
 # ============================================================
 # FAKE MODE SCHALTER
 # True  = kein LLM nötig, gibt Platzhalter-Antwort zurück
-# False = echter GWDG API Call (braucht API Key in .env)
+# False = echter GWDG API Call (braucht API Key in ..env)
 # ============================================================
 FAKE_MODE = False
 
@@ -104,7 +104,7 @@ def _call_gwdg_llm(prompt: str) -> str:
     Echter API Call zum GWDG SAIA LLM Server.
     Wird aktiv sobald FAKE_MODE = False.
 
-    Voraussetzung: In .env muss stehen:
+    Voraussetzung: In ..env muss stehen:
         GWDG_API_KEY=dein_key_hier
         GWDG_BASE_URL=https://saia.gwdg.de/v1  (oder der aktuelle Endpoint)
         GWDG_MODEL=meta-llama-3.1-70b-instruct  (oder gewünschtes Modell)
