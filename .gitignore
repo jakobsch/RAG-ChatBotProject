@@ -21,3 +21,10 @@ data/chroma_huggingface__all-MiniLM-L6-v2
 # OS
 .DS_Store
 tests/chunk_testing.py
+
+# Local benchmark and generated data
+benchmarks/
+data/
+tests/
+*.ipynb_checkpoints/
+__pycache__/
