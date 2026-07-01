@@ -307,6 +307,24 @@ class VectorStore:
         )
         return retriever.invoke(query)
     
+    def _apply_query_prefix(self, query: str) -> str:
+        """Wendet das Instruction-Prefix an, falls das Embedding-Modell eins benötigt (z.B. E5-Mistral bei GWDG)."""
+        if self.embedding_config.query_prefix:
+            return self.embedding_config.query_prefix + query
+        return query
+
+    def search_vector_only(self, query: str, k: int = 5) -> List[Document]:
+        """
+        Isolierte Chroma-Vektorsuche, ohne BM25 und ohne Reranking.
+        Ausschließlich für den Embedding-Vergleich im Notebook gedacht.
+        """
+        if not query.strip():
+            raise ValueError("Die Suchanfrage darf nicht leer sein.")
+
+        db = self._load_chroma()
+        prefixed_query = self._apply_query_prefix(query)
+        return db.similarity_search(prefixed_query, k=k)
+
 if __name__ == "__main__":
     vc = VectorStore()
     vc._load_chroma()
