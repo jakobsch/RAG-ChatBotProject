@@ -133,15 +133,7 @@ st.markdown(f"""
     margin: 4px 4px 0 0;
     cursor: pointer;
   }}
-  .status-box {{
-    background: {STATUS_BG};
-    border-left: 4px solid {ACCENT};
-    padding: 10px 14px;
-    border-radius: 0 8px 8px 0;
-    font-size: 0.9rem;
-    color: {BOT_TEXT};
-    margin-bottom: 12px;
-  }}
+
   .fake-warning {{
     background: {WARN_BG};
     border-left: 4px solid #f9a825;
@@ -214,13 +206,6 @@ with st.sidebar:
 
                 except Exception as e:
                     st.error(f"Fehler beim Verarbeiten: {e}")
-
-    if st.session_state.pdf_name:
-        st.markdown(
-            f'<div class="status-box">📑 <b>{st.session_state.pdf_name}</b><br>'
-            f"ist geladen und bereit.</div>",
-            unsafe_allow_html=True,
-        )
 
     st.markdown("---")
 
