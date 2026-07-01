@@ -37,43 +37,24 @@ if "pdf_bytes" not in st.session_state:
     st.session_state.pdf_bytes = None          # NEU: PDF für Viewer speichern
 if "processing" not in st.session_state:
     st.session_state.processing = False
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False         # NEU: Dark Mode
 if "viewer_page" not in st.session_state:
     st.session_state.viewer_page = None        # NEU: angeklickte Quell-Seite
 
-# ── Farbpaletten ───────────────────────────────────────────────────────────────
-# NEU: dynamische Farben je nach Modus
-if st.session_state.dark_mode:
-    BG         = "#10180f"
-    BOT_BG     = "#1d271c"
-    BOT_TEXT   = "#e8f0e8"
-    BOT_BORDER = "#2d3a2c"
-    BADGE_BG   = "#1d2a1c"
-    BADGE_TEXT = "#9fd89f"
-    BADGE_BRD  = "#2d4a2d"
-    STATUS_BG  = "#1d2a1c"
-    WARN_BG    = "#332a13"
-    WARN_TEXT  = "#f0dca0"
-    H_COLOR    = "#e8f0e8"
-    ACCENT     = "#4a8c4a"
-    ACCENT_H   = "#6aac6a"
-else:
-    BG         = "#f4f7f4"
-    BOT_BG     = "#ffffff"
-    BOT_TEXT   = "#1a2e1a"
-    BOT_BORDER = "#d4e6d4"
-    BADGE_BG   = "#e8f4e8"
-    BADGE_TEXT = "#2d5a2d"
-    BADGE_BRD  = "#b0d4b0"
-    STATUS_BG  = "#e8f4e8"
-    WARN_BG    = "#fff8e1"
-    WARN_TEXT  = "#5d4037"
-    H_COLOR    = "#1a2e1a"
-    ACCENT     = "#2d5a2d"
-    ACCENT_H   = "#4a8c4a"
-
-# ── CSS ───────────────────────────────────────────────────────────────────────
+# Farbpalette
+BG         = "#f4f7f4"
+BOT_BG     = "#ffffff"
+BOT_TEXT   = "#1a2e1a"
+BOT_BORDER = "#d4e6d4"
+BADGE_BG   = "#e8f4e8"
+BADGE_TEXT = "#2d5a2d"
+BADGE_BRD  = "#b0d4b0"
+STATUS_BG  = "#e8f4e8"
+WARN_BG    = "#fff8e1"
+WARN_TEXT  = "#5d4037"
+H_COLOR    = "#1a2e1a"
+ACCENT     = "#2d5a2d"
+ACCENT_H   = "#4a8c4a"
+# css
 st.markdown(f"""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap');
@@ -95,24 +76,20 @@ st.markdown(f"""
   [data-testid="stSidebar"] * {{ color: #e8f0e8 !important; }}
 
   
- /* LIGHT-Modus (Standard): Uploader-Inhalt dunkel, Box ist weiss */
+ /* Uploader-Inhalt: mittleres Grau, lesbar auf weiss UND schwarz */
   [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] *,
-  [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] * {{
-    color: #1a2e1a !important;
+  [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] *,
+  [data-testid="stSidebar"] label[data-testid="stWidgetLabel"] * {{
+    color: #888888 !important;
   }}
   [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] svg,
   [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] svg {{
-    fill: #1a2e1a !important;
+    fill: #888888 !important;
   }}
-
-  /* DARK-Modus (Streamlit): Uploader-Inhalt hell, Box ist schwarz */
-  [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] *,
-  [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] * {{
-    color: #e8f0e8 !important;
-  }}
-  [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] svg,
-  [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] svg {{
-    fill: #e8f0e8 !important;
+  [data-testid="stSidebar"] [data-testid="stTooltipIcon"] svg {{
+    stroke: #888888 !important;
+    fill: none !important;
+    color: #888888 !important;
   }}
   [data-testid="stSidebar"] .stButton > button {{
     background-color: #2d5a2d;
