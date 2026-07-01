@@ -196,13 +196,18 @@ if uploaded_file is not None:
 
                 if already_stored:
                     st.info(f"ℹ️ '{uploaded_file.name}' ist bereits in der DB – Chunking wird übersprungen.")
-                    vs.load_documents_for_bm25(uploaded_file.name)   # <-- FEHLTE
+                    vs.load_documents_for_bm25(uploaded_file.name)
                 else:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                         tmp.write(pdf_bytes)
                         tmp_path = tmp.name
 
                     chunks = load_and_chunk(tmp_path)
+
+                    # Echten Dateinamen statt Temp-Pfad in die Metadaten schreiben
+                    for chunk in chunks:
+                        chunk.metadata["filename"] = uploaded_file.name
+
                     vs.save_documents_to_db(chunks)
 
                     st.success(f"✅ {len(chunks)} Chunks gespeichert!")
