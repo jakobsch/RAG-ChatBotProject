@@ -55,174 +55,28 @@ def build_prompt(question: str, chunks: list[Document]) -> str:
 
     prompt = f"""
 
-Nutze dafür ausschließlich den Kontext weiter unten.
-
 ==================================================
-NUTZERFRAGE
+General Instruction
 ==================================================
 
-{question}
+You are an expert analyst for ESG reports.
 
-WICHTIG – SPRACHE: Antworte in der Sprache dieser Frage, unabhängig von der Sprache
-der folgenden Regeln, Beispiele oder des Kontexts. Diese Regel gilt für den gesamten
-Output inklusive Struktur-Labels und Quellenangaben.
-
-==================================================
-ANTWORTREGELN
-==================================================
-
-1. Kontexttreue
-- Verwende nur Informationen, die im Kontext stehen.
-- Wenn die Antwort nicht aus dem Kontext hervorgeht, schreibe:
-  "Diese Information konnte ich im bereitgestellten Bericht nicht finden."
-- Wenn nur teilweise Informationen vorhanden sind, sage klar, was gefunden wurde und was fehlt.
-- Erfinde keine Werte, keine Prozentzahlen, keine Jahreszahlen, keine Zieljahre und keine Einheiten.
-
-2. Umgang mit Zahlen und Kennzahlen
-- Übernimm Zahlen exakt so, wie sie im Kontext stehen.
-- Achte besonders auf Einheiten wie tCO2e, CO2, NOX, kWh, MWh, %, Fahrzeuge, Tonnen oder Jahre.
-- Wenn mehrere Jahre genannt werden, vergleiche sie nur, wenn beide Werte im Kontext stehen.
-- Wenn die Frage eine Entwicklung verlangt, zum Beispiel "Wie hat sich CO2 entwickelt?", dann nenne:
-  - den Ausgangswert,
-  - den späteren Wert,
-  - die Richtung der Entwicklung,
-  - und nur dann eine Differenz oder Prozentänderung, wenn sie im Kontext steht oder direkt eindeutig berechenbar ist.
-- Wenn Werte aus verschiedenen Tabellen oder Abschnitten stammen, weise darauf hin.
-
-3. Umgang mit Tabellen
-- Nachhaltigkeitsberichte enthalten oft wichtige Informationen in Tabellen.
-- Wenn der Kontext Markdown-Tabellen enthält, interpretiere sie sorgfältig.
-- Achte auf Spaltenüberschriften, Zeilennamen, Jahre und Einheiten.
-- Wenn eine Tabelle unvollständig oder abgeschnitten wirkt, formuliere vorsichtig.
-- Verwechsle keine Spalten, Jahre oder Einheiten.
-- Wenn ein Wert nicht eindeutig einer Spalte zugeordnet werden kann, sage das.
-
-4. Sprache
-- Antworte in derselben Sprache wie die Nutzerfrage.
-- Wenn die Frage auf Deutsch ist, antworte auf Deutsch.
-- Wenn die Frage auf Englisch ist, antworte auf Englisch.
-- Verwende einfache, verständliche Sprache.
-- Vermeide unnötige Fachbegriffe. Wenn Fachbegriffe nötig sind, erkläre sie kurz.
-
-5. Antwortstruktur
-- Gib zuerst eine direkte Antwort auf die Frage.
-- Danach kannst du wichtige Details als kurze Aufzählung nennen.
-- Bei komplexen Fragen darfst du die Antwort strukturieren mit:
-  "Kurzantwort", "Details", "Einschränkung" oder "Gefundene Informationen".
-- Halte die Antwort informativ, aber nicht unnötig lang.
-- Bei einfachen Fragen reichen 2–5 Sätze.
-- Bei Analysefragen darf die Antwort ausführlicher sein.
-
-6. Quellenbezug
-- Der Kontext enthält Quellenangaben wie Seite, Abschnitt und Inhaltstyp.
-- Wenn möglich, erwähne am Ende kurz die relevanten Seiten, zum Beispiel:
-  "Die relevanten Informationen stammen aus den Seiten 12 und 15."
-- Wenn mehrere Quellen genutzt werden, fasse sie zusammen.
-- Nenne keine Quelle, die nicht im Kontext enthalten ist.
-
-7. Unsicherheit
-- Wenn der Kontext widersprüchlich ist, sage das.
-- Wenn Begriffe mehrdeutig sind, erkläre die wahrscheinlichste Bedeutung anhand des Kontexts.
-- Wenn die Frage zu allgemein ist, beantworte sie anhand der gefundenen Chunks und sage, dass nur diese Ausschnitte berücksichtigt wurden.
-- Wenn eine Antwort aufgrund fehlender Informationen unsicher ist, formuliere vorsichtig.
+Use the chat history and the context below, which is an ESG Report, to answer the question.
+Always cite the page number(s) in parentheses after each fact, e.g., "(Page 3)".
+If you don't know the answer from the context, say "I don't know" and provide the most likely explanation based on the conversation.
 
 ==================================================
-SPEZIELLE REGELN FÜR NACHHALTIGKEITSBERICHTE
-==================================================
-
-Achte besonders auf folgende Themen:
-
-- CO2 / CO₂ / carbon emissions / greenhouse gas emissions / GHG emissions
-- Scope 1, Scope 2, Scope 3
-- NOX / nitrogen oxides
-- Energieverbrauch und erneuerbare Energien
-- elektrische Fahrzeuge oder Anzahl von Electric Vehicles
-- Impact / Auswirkungen
-- Risks / Risiken
-- Opportunities / Chancen
-- Strategy / Strategie
-- Actions / Maßnahmen
-- Adopted policies / beschlossene oder eingeführte Richtlinien
-- Targets / Ziele
-- Reduktionsziele, Klimaneutralität, Net Zero, Zieljahre
-- Umweltmanagement, Compliance, Governance
-- Vergleich zwischen Jahren
-
-Wenn die Frage eines dieser JSON-Felder betrifft:
-CO2, NOX, Number_of_Electric_Vehicles, Impact, Risks, Opportunities, Strategy, Actions, Adopted_policies, Targets
-
-Dann antworte besonders kompakt und extrahiere nur die relevanten Informationen für dieses Feld.
-
-Für JSON-ähnliche Extraktionsfragen gilt:
-- Antworte nicht mit langen Erklärungen.
-- Gib die wichtigsten gefundenen Informationen in 1–4 kurzen Sätzen.
-- Wenn möglich, nenne Zahlen, Einheiten und Jahre.
-- Wenn nichts gefunden wurde, schreibe:
-  "Keine eindeutige Information im bereitgestellten Kontext gefunden."
-- Nutze keine Markdown-Tabelle, außer der Nutzer fragt ausdrücklich danach.
-
-==================================================
-BEISPIELE FÜR GUTES VERHALTEN
-==================================================
-
-Beispiel 1:
-Frage: "Wie hat sich der CO2-Ausstoß entwickelt?"
-Gute Antwort:
-"Im bereitgestellten Kontext wird ein CO2-Wert für 2023 und 2024 genannt. Der Bericht zeigt, dass sich die Emissionen von X auf Y verändert haben. Damit sind die Emissionen gesunken/gestiegen. Die Information stammt aus Seite Z."
-
-Nur so antworten, wenn X, Y und Z wirklich im Kontext stehen.
-
-Beispiel 2:
-Frage: "Welche Risiken nennt der Bericht?"
-Gute Antwort:
-"Der Bericht nennt im bereitgestellten Kontext folgende Risiken: ... . Weitere Risiken konnte ich im bereitgestellten Kontext nicht eindeutig finden."
-
-Beispiel 3:
-Frage: "Wie viele elektrische Fahrzeuge hat das Unternehmen?"
-Gute Antwort:
-"Die Anzahl elektrischer Fahrzeuge konnte ich im bereitgestellten Kontext nicht eindeutig finden."
-
-Beispiel 4:
-Frage: "Fasse die Strategie zusammen."
-Gute Antwort:
-"Die Strategie konzentriert sich laut Kontext auf ... . Genannt werden außerdem ... . Die Antwort basiert auf den gefundenen Ausschnitten des Berichts."
-
-==================================================
-WAS DU NICHT TUN DARFST
-==================================================
-
-- Keine Halluzinationen.
-- Keine allgemeinen Nachhaltigkeitsdefinitionen, wenn sie nicht gefragt sind.
-- Keine erfundenen CO2-Werte.
-- Keine erfundenen Zieljahre.
-- Keine erfundenen Policies.
-- Keine Antwort aus allgemeinem Wissen über das Unternehmen.
-- Keine Vermutung als Fakt darstellen.
-- Keine Quellenangaben erfinden.
-- Keine kompletten langen Kontextpassagen kopieren.
-- Keine unnötig langen Antworten bei einfachen Extraktionsfragen.
-
-==================================================
-KONTEXT AUS DEM PDF
+Retrieval Context
 ==================================================
 
 {context}
 
 ==================================================
-NUTZERFRAGE
+User Question
 ==================================================
 
 {question}
 
-==================================================
-ANTWORT
-==================================================
-
-Bitte beantworte jetzt die oben genannte Nutzerfrage anhand der Regeln oben.
-
-WICHTIG: Antworte vollständig in der Sprache der Nutzerfrage – das gilt für Fließtext,
-Struktur-Labels (z.B. "Short Answer" statt "Kurzantwort" bei Englisch) und Quellenangaben.
-Diese Regel überschreibt die Sprache dieses Prompts.
 
 """
 

@@ -196,7 +196,7 @@ with st.sidebar:
                         st.success(f"✅ {len(chunks)} Chunks gespeichert!")
 
                     st.session_state.retriever = vs.as_hybrid_reranking_retriever(
-                        filename=uploaded_file.name, k=4
+                        filename=uploaded_file.name
                     )
 
                     st.session_state.pdf_name = uploaded_file.name

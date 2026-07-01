@@ -220,7 +220,7 @@ class VectorStore:
     def as_hybrid_reranking_retriever(
         self,
         filename: str,
-        k: int = 3,
+        k: int = 5,
         candidate_k: int = 20,
         bm25_weight: float = 0.4,
         vector_weight: float = 0.6,
@@ -286,10 +286,10 @@ class VectorStore:
     def search_hybrid_reranked(
         self,
         query: str,
-        k: int = 3,
+        k: int = 5,
         candidate_k: int = 20,
-        bm25_weight: float = 0.4,
-        vector_weight: float = 0.6,
+        bm25_weight: float = 0.3,
+        vector_weight: float = 0.7,
     ) -> List[Document]:
         """
         Direkte Suchmethode (ohne Retriever-Objekt) — praktisch für schnelle Tests.
