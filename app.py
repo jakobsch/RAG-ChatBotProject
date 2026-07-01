@@ -5,8 +5,8 @@ Starten mit: streamlit run app.py
 
 import sys
 import json
+import base64
 import tempfile
-import os
 from pathlib import Path
 
 import streamlit as st
@@ -25,103 +25,157 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Session State initialisieren ───────────────────────────────────────────────
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "retriever" not in st.session_state:
+    st.session_state.retriever = None
+if "pdf_name" not in st.session_state:
+    st.session_state.pdf_name = None
+if "pdf_bytes" not in st.session_state:
+    st.session_state.pdf_bytes = None          # NEU: PDF für Viewer speichern
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False         # NEU: Dark Mode
+if "viewer_page" not in st.session_state:
+    st.session_state.viewer_page = None        # NEU: angeklickte Quell-Seite
+
+# ── Farbpaletten ───────────────────────────────────────────────────────────────
+# NEU: dynamische Farben je nach Modus
+if st.session_state.dark_mode:
+    BG         = "#10180f"
+    BOT_BG     = "#1d271c"
+    BOT_TEXT   = "#e8f0e8"
+    BOT_BORDER = "#2d3a2c"
+    BADGE_BG   = "#1d2a1c"
+    BADGE_TEXT = "#9fd89f"
+    BADGE_BRD  = "#2d4a2d"
+    STATUS_BG  = "#1d2a1c"
+    WARN_BG    = "#332a13"
+    WARN_TEXT  = "#f0dca0"
+    H_COLOR    = "#e8f0e8"
+    ACCENT     = "#4a8c4a"
+    ACCENT_H   = "#6aac6a"
+else:
+    BG         = "#f4f7f4"
+    BOT_BG     = "#ffffff"
+    BOT_TEXT   = "#1a2e1a"
+    BOT_BORDER = "#d4e6d4"
+    BADGE_BG   = "#e8f4e8"
+    BADGE_TEXT = "#2d5a2d"
+    BADGE_BRD  = "#b0d4b0"
+    STATUS_BG  = "#e8f4e8"
+    WARN_BG    = "#fff8e1"
+    WARN_TEXT  = "#5d4037"
+    H_COLOR    = "#1a2e1a"
+    ACCENT     = "#2d5a2d"
+    ACCENT_H   = "#4a8c4a"
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap');
 
-  html, body, [class*="css"] {
+  html, body, [class*="css"] {{
     font-family: 'DM Sans', sans-serif;
-  }
-  h1, h2, h3 {
+  }}
+  h1, h2, h3 {{
     font-family: 'DM Serif Display', serif;
-  }
+    color: {H_COLOR} !important;
+  }}
 
-  /* Hintergrund */
-  .stApp { background-color: #f4f7f4; }
+  .stApp {{ background-color: {BG}; }}
 
-  /* Sidebar */
-  [data-testid="stSidebar"] {
+  [data-testid="stSidebar"] {{
     background-color: #1a2e1a;
     color: #e8f0e8;
-  }
-  [data-testid="stSidebar"] * { color: #e8f0e8 !important; }
-  [data-testid="stSidebar"] .stButton > button {
+  }}
+  [data-testid="stSidebar"] * {{ color: #e8f0e8 !important; }}
+  [data-testid="stSidebar"] .stButton > button {{
     background-color: #2d5a2d;
     color: #e8f0e8;
     border: 1px solid #4a8c4a;
     border-radius: 8px;
     width: 100%;
-  }
-  [data-testid="stSidebar"] .stButton > button:hover {
+  }}
+  [data-testid="stSidebar"] .stButton > button:hover {{
     background-color: #4a8c4a;
-  }
+  }}
 
-  /* Chat-Nachrichten */
-  .chat-user {
-    background: #2d5a2d;
+  .chat-user {{
+    background: {ACCENT};
     color: #ffffff;
     padding: 12px 16px;
     border-radius: 18px 18px 4px 18px;
     margin: 8px 0 8px 15%;
     font-size: 0.95rem;
     line-height: 1.5;
-  }
-  .chat-bot {
-    background: #ffffff;
-    color: #1a2e1a;
+  }}
+  .chat-bot {{
+    background: {BOT_BG};
+    color: {BOT_TEXT};
     padding: 12px 16px;
     border-radius: 18px 18px 18px 4px;
     margin: 8px 15% 8px 0;
     font-size: 0.95rem;
     line-height: 1.5;
-    border: 1px solid #d4e6d4;
+    border: 1px solid {BOT_BORDER};
     box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-  }
-  .source-badge {
+  }}
+  .source-badge {{
     display: inline-block;
-    background: #e8f4e8;
-    color: #2d5a2d;
-    border: 1px solid #b0d4b0;
+    background: {BADGE_BG};
+    color: {BADGE_TEXT};
+    border: 1px solid {BADGE_BRD};
     border-radius: 12px;
     padding: 2px 10px;
     font-size: 0.75rem;
     margin: 4px 4px 0 0;
-  }
-  .status-box {
-    background: #e8f4e8;
-    border-left: 4px solid #2d5a2d;
+    cursor: pointer;
+  }}
+  .status-box {{
+    background: {STATUS_BG};
+    border-left: 4px solid {ACCENT};
     padding: 10px 14px;
     border-radius: 0 8px 8px 0;
     font-size: 0.9rem;
-    color: #1a2e1a;
+    color: {BOT_TEXT};
     margin-bottom: 12px;
-  }
-  .fake-warning {
-    background: #fff8e1;
+  }}
+  .fake-warning {{
+    background: {WARN_BG};
     border-left: 4px solid #f9a825;
     padding: 10px 14px;
     border-radius: 0 8px 8px 0;
     font-size: 0.85rem;
-    color: #5d4037;
+    color: {WARN_TEXT};
     margin-bottom: 12px;
-  }
+  }}
+  /* NEU: Quellen-Buttons als Badges stylen */
+  div[data-testid="stHorizontalBlock"] .stButton > button {{
+    background-color: {BADGE_BG} !important;
+    color: {BADGE_TEXT} !important;
+    border: 1px solid {BADGE_BRD} !important;
+    border-radius: 12px !important;
+    font-size: 0.75rem !important;
+    padding: 2px 10px !important;
+  }}
 </style>
 """, unsafe_allow_html=True)
 
-# ── Session State initialisieren ───────────────────────────────────────────────
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []      # [{"role": "user"|"bot", "text": ...}]
-if "retriever" not in st.session_state:
-    st.session_state.retriever = None
-if "pdf_name" not in st.session_state:
-    st.session_state.pdf_name = None
-if "processing" not in st.session_state:
-    st.session_state.processing = False
-
 # ── Sidebar: PDF Upload ────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🌱 Sustainability\nReport Chatbot")
+    # NEU: Dark Mode Toggle
+    title_col, toggle_col = st.columns([5, 1])
+    with title_col:
+        st.markdown("## 🌱 Sustainability\nReport Chatbot")
+    with toggle_col:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("☀️" if not st.session_state.dark_mode else "🌙", key="dark_toggle"):
+            st.session_state.dark_mode = not st.session_state.dark_mode
+            st.rerun()
+
     st.markdown("---")
     st.markdown("### PDF hochladen")
 
@@ -135,32 +189,32 @@ with st.sidebar:
         if st.button("📄 PDF verarbeiten"):
             with st.spinner("PDF wird verarbeitet..."):
                 try:
-                    # ✅ Neu: TemporaryDirectory mit originalem Dateinamen
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        tmp_path = os.path.join(tmp_dir, uploaded_file.name)
-                        with open(tmp_path, "wb") as f:
-                            f.write(uploaded_file.read())
+                    # NEU: PDF-Bytes für Viewer speichern
+                    pdf_bytes = uploaded_file.read()
 
-                        # Chunking
-                        chunks = load_and_chunk(tmp_path)
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, suffix=".pdf"
+                    ) as tmp:
+                        tmp.write(pdf_bytes)
+                        tmp_path = tmp.name
 
-                        # In ChromaDB speichern
-                        vs = VectorStore()
-                        is_new = vs.save_documents_to_db(chunks)
+                    chunks = load_and_chunk(tmp_path)
 
-                        # Retriever für die Chat-Session speichern
-                        st.session_state.retriever = vs.as_hybrid_reranking_retriever()
-                        st.session_state.chat_history = []  # neues PDF = neuer Chat
+                    vs = VectorStore()
+                    vs.save_documents_to_db(chunks)
 
-                    if is_new:
-                        st.success(f"✅ {len(chunks)} Chunks gespeichert!")
-                    else:
-                        ("Das hochgeladene PDF ist bereits in der Datenbank gespeichert")
+                    st.session_state.retriever = vs.as_hybrid_reranking_retriever(k=4)
+                    
+                    st.session_state.pdf_name = uploaded_file.name
+                    st.session_state.pdf_bytes = pdf_bytes   # NEU
+                    st.session_state.chat_history = []
+                    st.session_state.viewer_page = None       # NEU
+
+                    st.success(f"✅ {len(chunks)} Chunks gespeichert!")
 
                 except Exception as e:
                     st.error(f"Fehler beim Verarbeiten: {e}")
 
-    # Status anzeigen
     if st.session_state.pdf_name:
         st.markdown(
             f'<div class="status-box">📑 <b>{st.session_state.pdf_name}</b><br>'
@@ -170,12 +224,11 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Chat leeren
     if st.button("🗑️ Chat leeren"):
         st.session_state.chat_history = []
+        st.session_state.viewer_page = None   # NEU
         st.rerun()
 
-    # JSON Export (wird unten befüllt)
     st.markdown("### JSON Export")
     st.caption("Nach dem Laden eines PDFs können Key-Daten exportiert werden.")
     if st.button("📥 JSON generieren & herunterladen"):
@@ -183,7 +236,6 @@ with st.sidebar:
             st.warning("Bitte zuerst ein PDF hochladen.")
         else:
             with st.spinner("Extrahiere Key-Daten..."):
-                # Fragt das LLM nach jedem JSON-Feld einzeln
                 felder = [
                     "CO2", "NOX", "Number_of_Electric_Vehicles",
                     "Impact", "Risks", "Opportunities",
@@ -208,7 +260,6 @@ with st.sidebar:
 # ── Hauptbereich: Chat ─────────────────────────────────────────────────────────
 st.markdown("# Frag deinen Nachhaltigkeitsbericht")
 
-# Fake-Mode Hinweis
 from src.rag.rag_chain import FAKE_MODE
 if FAKE_MODE:
     st.markdown(
@@ -219,58 +270,85 @@ if FAKE_MODE:
         unsafe_allow_html=True,
     )
 
-# Kein PDF geladen
 if st.session_state.retriever is None:
     st.info("👈 Lade zuerst einen Nachhaltigkeitsbericht in der Sidebar hoch.")
 else:
-    # Chat-Verlauf anzeigen
-    for msg in st.session_state.chat_history:
-        if msg["role"] == "user":
-            st.markdown(
-                f'<div class="chat-user">{msg["text"]}</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<div class="chat-bot">{msg["text"]}</div>',
-                unsafe_allow_html=True,
-            )
-            # Quellen als Badges
-            if msg.get("sources"):
-                badges = "".join(
-                    f'<span class="source-badge">Seite {s["page"]} · {s["section"]}</span>'
-                    for s in msg["sources"]
+    # NEU: zwei Spalten wenn PDF-Viewer aktiv
+    show_viewer = bool(st.session_state.viewer_page and st.session_state.pdf_bytes)
+    if show_viewer:
+        chat_col, viewer_col = st.columns([3, 2])
+    else:
+        chat_col = st.container()
+        viewer_col = None
+
+    with chat_col:
+        # Chat-Verlauf anzeigen
+        for i, msg in enumerate(st.session_state.chat_history):
+            if msg["role"] == "user":
+                st.markdown(
+                    f'<div class="chat-user">{msg["text"]}</div>',
+                    unsafe_allow_html=True,
                 )
-                st.markdown(badges, unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f'<div class="chat-bot">{msg["text"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                # NEU: Quellen als klickbare Buttons statt statische Badges
+                if msg.get("sources"):
+                    cols = st.columns(len(msg["sources"]))
+                    for j, (col, s) in enumerate(zip(cols, msg["sources"])):
+                        with col:
+                            label = f'Seite {s["page"]} · {s["section"][:20]}'
+                            if st.button(label, key=f"src_{i}_{j}"):
+                                st.session_state.viewer_page = s["page"]
+                                st.rerun()
 
-    # Eingabefeld
-    st.markdown("---")
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        user_input = st.text_input(
-            "Deine Frage",
-            placeholder="z.B. Wie hat sich der CO2-Ausstoß zwischen 2023 und 2024 verändert?",
-            label_visibility="collapsed",
-        )
-    with col2:
-        send = st.button("Senden", use_container_width=True)
+        # NEU: Eingabefeld in st.form → Enter zum Senden + Feld leert sich
+        st.markdown("---")
+        with st.form(key="question_form", clear_on_submit=True):
+            col1, col2 = st.columns([6, 1])
+            with col1:
+                user_input = st.text_input(
+                    "Deine Frage",
+                    placeholder="z.B. Wie hat sich der CO2-Ausstoß zwischen 2023 und 2024 verändert?",
+                    label_visibility="collapsed",
+                )
+            with col2:
+                send = st.form_submit_button("Senden", use_container_width=True)
 
-    if send and user_input.strip():
-        # Frage in History speichern
-        st.session_state.chat_history.append(
-            {"role": "user", "text": user_input}
-        )
+        if send and user_input.strip():
+            st.session_state.chat_history.append(
+                {"role": "user", "text": user_input}
+            )
+            with st.spinner("Suche relevante Stellen..."):
+                result = ask(user_input, st.session_state.retriever)
+            st.session_state.chat_history.append(
+                {
+                    "role": "bot",
+                    "text": result["answer"],
+                    "sources": result["sources"],
+                }
+            )
+            st.rerun()
 
-        # Antwort holen
-        with st.spinner("Suche relevante Stellen..."):
-            result = ask(user_input, st.session_state.retriever)
+    # NEU: PDF-Viewer rechts
+    if show_viewer:
+        with viewer_col:
+            close1, close2 = st.columns([5, 1])
+            with close1:
+                st.markdown(f"#### 📄 Seite {st.session_state.viewer_page}")
+            with close2:
+                if st.button("✕", key="close_viewer"):
+                    st.session_state.viewer_page = None
+                    st.rerun()
 
-        # Antwort in History speichern
-        st.session_state.chat_history.append(
-            {
-                "role": "bot",
-                "text": result["answer"],
-                "sources": result["sources"],
-            }
-        )
-        st.rerun()
+            b64 = base64.b64encode(st.session_state.pdf_bytes).decode("utf-8")
+            page = st.session_state.viewer_page
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{b64}#page={page}&zoom=100" '
+                f'width="100%" height="650" '
+                f'style="border:1px solid {BOT_BORDER}; border-radius:8px;" '
+                f'type="application/pdf"></iframe>',
+                unsafe_allow_html=True,
+            )
