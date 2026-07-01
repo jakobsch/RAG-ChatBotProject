@@ -1,6 +1,7 @@
 from typing import List, Optional
 from pathlib import Path
 import shutil
+from typing import Callable
  
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
@@ -11,7 +12,7 @@ from langchain_classic.retrievers.document_compressors import CrossEncoderRerank
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
-default_path = Path(__file__).parent.parent / "data" / "chroma_vectorstore"
+default_path = Path(__file__).parent.parent.parent / "data" / "chroma_vectorstore"
  
  
 class VectorStore:
@@ -110,6 +111,10 @@ class VectorStore:
                 sources.add(Path(metadata["filename"]).name)
         return sources
     
+    def is_document_stored(self, filename: str) -> bool:
+        """Prüft, ob eine PDF (anhand des Dateinamens) bereits in der DB liegt."""
+        return Path(filename).name in self._get_stored_sources()
+    
     def clear_database(self) -> None:
         """
         Löscht die gesamte ChromaDB auf Dateisystemebene und setzt alle Caches zurück.
@@ -168,17 +173,33 @@ class VectorStore:
 
         print(f"{len(new_chunks)} neue Chunks aus {len({Path(c.metadata.get('filename','')).name for c in new_chunks})} PDF(s) gespeichert.")
  
-    def load_documents_for_bm25(self, chunks: List[Document]) -> None:
+    def load_documents_for_bm25(self, filename: str) -> None:
         """
-        Lädt Dokumente ausschließlich in den BM25-Speicher, ohne ChromaDB
-        zu verändern. Nützlich, wenn ChromaDB bereits befüllt ist und du
-        BM25 nachträglich aktivieren möchtest.
+        Lädt alle bereits in ChromaDB gespeicherten Chunks eines Dokuments
+        (identifiziert über 'filename') in den BM25-Speicher, ohne ChromaDB
+        zu verändern. Nützlich, wenn ein PDF bereits verarbeitet wurde und
+        BM25 für die aktuelle Session (wieder-)aktiviert werden soll.
         """
+        name = Path(filename).name
+        db = self._load_chroma()
+
+        result = db.get(where={"filename": name}, include=["documents", "metadatas"])
+
+        chunks = [
+            Document(page_content=doc, metadata=meta)
+            for doc, meta in zip(result["documents"], result["metadatas"])
+        ]
+
+        if not chunks:
+            print(f"Keine gespeicherten Chunks für '{name}' gefunden.")
+            return
+
         self._bm25_docs = chunks
-        print(f"{len(chunks)} Dokumente für BM25 geladen.")
+        print(f"{len(chunks)} Chunks für '{name}' aus ChromaDB für BM25 geladen.")
  
     def as_hybrid_reranking_retriever(
         self,
+        filename: str,
         k: int = 3,
         candidate_k: int = 20,
         bm25_weight: float = 0.4,
@@ -214,7 +235,7 @@ class VectorStore:
         bm25_retriever = self._build_bm25_retriever(k=candidate_k)
  
         vector_retriever = self._load_chroma().as_retriever(
-            search_kwargs={"k": candidate_k}
+            search_kwargs={"k": candidate_k, "filter": {"filename": Path(filename).name},}
         )
  
         # --- Schritt 2: Hybrid-Fusion via Reciprocal Rank Fusion ---

@@ -185,35 +185,39 @@ with st.sidebar:
         help="Nur PDF-Dateien werden unterstützt.",
     )
 
-    if uploaded_file is not None:
-        if st.button("📄 PDF verarbeiten"):
-            with st.spinner("PDF wird verarbeitet..."):
-                try:
-                    # NEU: PDF-Bytes für Viewer speichern
-                    pdf_bytes = uploaded_file.read()
+if uploaded_file is not None:
+    if st.button("📄 PDF verarbeiten"):
+        with st.spinner("PDF wird verarbeitet..."):
+            try:
+                vs = VectorStore()
+                already_stored = vs.is_document_stored(uploaded_file.name)
 
-                    with tempfile.NamedTemporaryFile(
-                        delete=False, suffix=".pdf"
-                    ) as tmp:
+                pdf_bytes = uploaded_file.read()
+
+                if already_stored:
+                    st.info(f"ℹ️ '{uploaded_file.name}' ist bereits in der DB – Chunking wird übersprungen.")
+                    vs.load_documents_for_bm25(uploaded_file.name)   # <-- FEHLTE
+                else:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                         tmp.write(pdf_bytes)
                         tmp_path = tmp.name
 
                     chunks = load_and_chunk(tmp_path)
-
-                    vs = VectorStore()
                     vs.save_documents_to_db(chunks)
-
-                    st.session_state.retriever = vs.as_hybrid_reranking_retriever(k=4)
-                    
-                    st.session_state.pdf_name = uploaded_file.name
-                    st.session_state.pdf_bytes = pdf_bytes   # NEU
-                    st.session_state.chat_history = []
-                    st.session_state.viewer_page = None       # NEU
 
                     st.success(f"✅ {len(chunks)} Chunks gespeichert!")
 
-                except Exception as e:
-                    st.error(f"Fehler beim Verarbeiten: {e}")
+                st.session_state.retriever = vs.as_hybrid_reranking_retriever(
+                    filename=uploaded_file.name, k=4
+                )
+
+                st.session_state.pdf_name = uploaded_file.name
+                st.session_state.pdf_bytes = pdf_bytes
+                st.session_state.chat_history = []
+                st.session_state.viewer_page = None
+
+            except Exception as e:
+                st.error(f"Fehler beim Verarbeiten: {e}")
 
     if st.session_state.pdf_name:
         st.markdown(
