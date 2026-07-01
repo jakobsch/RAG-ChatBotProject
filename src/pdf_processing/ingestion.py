@@ -51,6 +51,7 @@ def load_and_chunk(pdf_path: str, chunk_size: int = 1000, chunk_overlap: int = 2
     total = len(chunks)
     for i, c in enumerate(chunks):
         page_no = c.metadata.get("page", "?")
+        page_no = page_no + 1 if isinstance(page_no, int) else page_no
         c.metadata = {
             "source": pdf_path,
             "filename": filename,
