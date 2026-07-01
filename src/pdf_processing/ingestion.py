@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PDF_DIR = PROJECT_ROOT / "data" / "pdfs"
 
 
-def load_and_chunk(pdf_path: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[Document]:
+def load_and_chunk(pdf_path: str, chunk_size: int = 2000, chunk_overlap: int = 200) -> list[Document]:
     """
     Liest ein PDF mit pypdf und zerlegt es in Chunks.
 

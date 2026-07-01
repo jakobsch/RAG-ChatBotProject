@@ -6,13 +6,32 @@ from typing import Callable
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from langchain_core.embeddings import Embeddings
+from langchain_core.runnables import RunnableLambda
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_classic.retrievers import EnsembleRetriever, ContextualCompressionRetriever
 from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
+from .embedding_config import EmbeddingConfig 
+
 default_path = Path(__file__).parent.parent.parent / "data" / "chroma_vectorstore"
+
+def _build_embeddings(config: EmbeddingConfig) -> Embeddings:
+    if config.provider == "huggingface":
+        return HuggingFaceEmbeddings(model_name=config.model_name)
+
+    if config.provider == "gwdg":
+        return OpenAIEmbeddings(
+            model=config.model_name,
+            api_key=config.api_key,
+            base_url=config.base_url,
+            check_embedding_ctx_length=False,
+        )
+
+    raise ValueError(f"Unbekannter Embedding-Provider: {config.provider}")
  
  
 class VectorStore:
@@ -32,30 +51,31 @@ class VectorStore:
     """
  
     # Bewährte Standardmodelle – können im Konstruktor überschrieben werden
-    DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
     DEFAULT_CROSS_ENCODER   = "cross-encoder/ms-marco-MiniLM-L-6-v2"
  
     def __init__(
-        self,
-        persist_directory: str = str(default_path),
-        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
-        cross_encoder_model: str = DEFAULT_CROSS_ENCODER,
-    ):
-        self.persist_directory    = persist_directory
-        self._embeddings_model    = embedding_model
-        self._cross_encoder_model = cross_encoder_model
+            self,
+            embedding_config: Optional[EmbeddingConfig] = None,
+            persist_directory: Optional[str] = None,
+            cross_encoder_model: str = DEFAULT_CROSS_ENCODER,
+        ):
+            self.embedding_config = embedding_config or EmbeddingConfig.from_env()
+            self.persist_directory = persist_directory or str(
+                default_path.parent / f"chroma_{self.embedding_config.cache_key}"
+            )
+            self._cross_encoder_model = cross_encoder_model
 
-        # Lazy-loaded
-        self._embeddings:   Optional[HuggingFaceEmbeddings]    = None
-        self._cross_encoder: Optional[HuggingFaceCrossEncoder] = None
-        self._chroma_db:    Optional[Chroma]                   = None
-        self._bm25_docs:    List[Document]                     = []
+            self._embeddings: Optional[Embeddings] = None
+            self._cross_encoder: Optional[HuggingFaceCrossEncoder] = None
+            self._chroma_db: Optional[Chroma] = None
+            self._bm25_docs: List[Document] = []
  
     @property
-    def embeddings(self) -> HuggingFaceEmbeddings:
+    def embeddings(self) -> Embeddings:
         if self._embeddings is None:
-            print("Lade Embedding-Modell...", flush=True)
-            self._embeddings = HuggingFaceEmbeddings(model_name=self._embeddings_model)
+            print(f"Lade Embeddings ({self.embedding_config.cache_key})...", flush=True)
+            self._embeddings = _build_embeddings(self.embedding_config)
         return self._embeddings
 
     @property
@@ -200,7 +220,7 @@ class VectorStore:
     def as_hybrid_reranking_retriever(
         self,
         filename: str,
-        k: int = 3,
+        k: int = 5,
         candidate_k: int = 20,
         bm25_weight: float = 0.4,
         vector_weight: float = 0.6,
@@ -237,6 +257,12 @@ class VectorStore:
         vector_retriever = self._load_chroma().as_retriever(
             search_kwargs={"k": candidate_k, "filter": {"filename": Path(filename).name},}
         )
+
+        # Instruction-Prefix nur für den Vektor-Zweig anwenden (z.B. E5-Mistral bei GWDG).
+        # BM25 bekommt bewusst die unveränderte Query, da Keyword-Suche sonst verfälscht wird.
+        if self.embedding_config.query_prefix:
+            prefix = self.embedding_config.query_prefix
+            vector_retriever = RunnableLambda(lambda q: prefix + q) | vector_retriever
  
         # --- Schritt 2: Hybrid-Fusion via Reciprocal Rank Fusion ---
         ensemble = EnsembleRetriever(
@@ -260,10 +286,10 @@ class VectorStore:
     def search_hybrid_reranked(
         self,
         query: str,
-        k: int = 3,
+        k: int = 5,
         candidate_k: int = 20,
-        bm25_weight: float = 0.4,
-        vector_weight: float = 0.6,
+        bm25_weight: float = 0.3,
+        vector_weight: float = 0.7,
     ) -> List[Document]:
         """
         Direkte Suchmethode (ohne Retriever-Objekt) — praktisch für schnelle Tests.
@@ -281,6 +307,24 @@ class VectorStore:
         )
         return retriever.invoke(query)
     
+    def _apply_query_prefix(self, query: str) -> str:
+        """Wendet das Instruction-Prefix an, falls das Embedding-Modell eins benötigt (z.B. E5-Mistral bei GWDG)."""
+        if self.embedding_config.query_prefix:
+            return self.embedding_config.query_prefix + query
+        return query
+
+    def search_vector_only(self, query: str, k: int = 5) -> List[Document]:
+        """
+        Isolierte Chroma-Vektorsuche, ohne BM25 und ohne Reranking.
+        Ausschließlich für den Embedding-Vergleich im Notebook gedacht.
+        """
+        if not query.strip():
+            raise ValueError("Die Suchanfrage darf nicht leer sein.")
+
+        db = self._load_chroma()
+        prefixed_query = self._apply_query_prefix(query)
+        return db.similarity_search(prefixed_query, k=k)
+
 if __name__ == "__main__":
     vc = VectorStore()
     vc._load_chroma()
