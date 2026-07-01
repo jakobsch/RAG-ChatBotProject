@@ -21,3 +21,10 @@ data/chroma_vectorstore/
 # OS
 .DS_Store
 tests/chunk_testing.py
+
+# Local benchmark and generated data
+benchmarks/
+data/
+tests/
+*.ipynb_checkpoints/
+__pycache__/
