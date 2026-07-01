@@ -157,20 +157,20 @@ st.markdown(f"""
 
 # ── Sidebar: PDF Upload ────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🌱 Sustainability\nReport Chatbot")
+    st.markdown("## 🌱 Sustainability Report\nQ&A Chatbot")
 
     st.markdown("---")
-    st.markdown("### PDF hochladen")
+    st.markdown("### Upload PDF")
 
     uploaded_file = st.file_uploader(
-        "Nachhaltigkeitsbericht auswählen",
+        "Select Sustainability Report",
         type=["pdf"],
-        help="Nur PDF-Dateien werden unterstützt.",
+        help="Only PDF Files supported.",
     )
 
     if uploaded_file is not None:
-        if st.button("📄 PDF verarbeiten"):
-            with st.spinner("PDF wird verarbeitet..."):
+        if st.button("📄 Process PDF"):
+            with st.spinner("PDF is being processed..."):
                 try:
                     vs = VectorStore()
                     already_stored = vs.is_document_stored(uploaded_file.name)
@@ -178,7 +178,7 @@ with st.sidebar:
                     pdf_bytes = uploaded_file.read()
 
                     if already_stored:
-                        st.info(f"ℹ️ '{uploaded_file.name}' ist bereits in der DB – Chunking wird übersprungen.")
+                        st.info(f"Uploaded file is already stored")
                         vs.load_documents_for_bm25(uploaded_file.name)
                     else:
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
@@ -193,7 +193,7 @@ with st.sidebar:
 
                         vs.save_documents_to_db(chunks)
 
-                        st.success(f"✅ {len(chunks)} Chunks gespeichert!")
+                        st.success(f"✅ {len(chunks)} Chunks saved!")
 
                     st.session_state.retriever = vs.as_hybrid_reranking_retriever(
                         filename=uploaded_file.name
@@ -209,18 +209,18 @@ with st.sidebar:
 
     st.markdown("---")
 
-    if st.button("🗑️ Chat leeren"):
+    if st.button("🗑️ Clear Chat"):
         st.session_state.chat_history = []
         st.session_state.viewer_page = None
         st.rerun()
 
     st.markdown("### JSON Export")
-    st.caption("Nach dem Laden eines PDFs können Key-Daten exportiert werden.")
-    if st.button("📥 JSON generieren & herunterladen"):
+    st.caption("Export Key Data after PDF processing.")
+    if st.button("📥 JSON generate & download"):
         if st.session_state.retriever is None:
-            st.warning("Bitte zuerst ein PDF hochladen.")
+            st.warning("Please upload your file first.")
         else:
-            with st.spinner("Extrahiere Key-Daten..."):
+            with st.spinner("Extracting Key Data..."):
                 felder = [
                     "CO2", "NOX", "Number_of_Electric_Vehicles",
                     "Impact", "Risks", "Opportunities",
@@ -236,14 +236,14 @@ with st.sidebar:
 
                 json_str = json.dumps(json_data, ensure_ascii=False, indent=2)
                 st.download_button(
-                    label="⬇️ JSON herunterladen",
+                    label="⬇️ Download JSON",
                     data=json_str,
                     file_name=f"{st.session_state.pdf_name}_extract.json",
                     mime="application/json",
                 )
 
 # ── Hauptbereich: Chat ─────────────────────────────────────────────────────────
-st.markdown("# Frag deinen Nachhaltigkeitsbericht")
+st.markdown("# Ask questions regarding the Report")
 
 from src.rag.rag_chain import FAKE_MODE
 if FAKE_MODE:
@@ -256,7 +256,7 @@ if FAKE_MODE:
     )
 
 if st.session_state.retriever is None:
-    st.info("👈 Lade zuerst einen Nachhaltigkeitsbericht in der Sidebar hoch.")
+    st.info("👈 First upload your PDF file in the sidebar.")
 else:
     # NEU: zwei Spalten wenn PDF-Viewer aktiv
     show_viewer = bool(st.session_state.viewer_page and st.session_state.pdf_bytes)
@@ -304,7 +304,7 @@ else:
             with col1:
                 user_input = st.text_input(
                     "Deine Frage",
-                    placeholder="z.B. Wie hat sich der CO2-Ausstoß zwischen 2023 und 2024 verändert?",
+                    placeholder="e.g. How did the CO2 Emissions change between 2023 and 2024?",
                     label_visibility="collapsed",
                 )
             with col2:
@@ -314,7 +314,7 @@ else:
             st.session_state.chat_history.append(
                 {"role": "user", "text": user_input}
             )
-            with st.spinner("Suche relevante Stellen..."):
+            with st.spinner("Searching for relevant passages..."):
                 result = ask(user_input, st.session_state.retriever)
             st.session_state.chat_history.append(
                 {
