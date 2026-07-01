@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from src.pdf_processing.ingestion import load_and_chunk
 from src.vectorstore.chromadb_storage import VectorStore
 from src.rag.rag_chain import ask
+from streamlit_pdf_viewer import pdf_viewer
 
 # ── Seitenkonfiguration ────────────────────────────────────────────────────────
 st.set_page_config(
@@ -36,43 +37,24 @@ if "pdf_bytes" not in st.session_state:
     st.session_state.pdf_bytes = None          # NEU: PDF für Viewer speichern
 if "processing" not in st.session_state:
     st.session_state.processing = False
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False         # NEU: Dark Mode
 if "viewer_page" not in st.session_state:
     st.session_state.viewer_page = None        # NEU: angeklickte Quell-Seite
 
-# ── Farbpaletten ───────────────────────────────────────────────────────────────
-# NEU: dynamische Farben je nach Modus
-if st.session_state.dark_mode:
-    BG         = "#10180f"
-    BOT_BG     = "#1d271c"
-    BOT_TEXT   = "#e8f0e8"
-    BOT_BORDER = "#2d3a2c"
-    BADGE_BG   = "#1d2a1c"
-    BADGE_TEXT = "#9fd89f"
-    BADGE_BRD  = "#2d4a2d"
-    STATUS_BG  = "#1d2a1c"
-    WARN_BG    = "#332a13"
-    WARN_TEXT  = "#f0dca0"
-    H_COLOR    = "#e8f0e8"
-    ACCENT     = "#4a8c4a"
-    ACCENT_H   = "#6aac6a"
-else:
-    BG         = "#f4f7f4"
-    BOT_BG     = "#ffffff"
-    BOT_TEXT   = "#1a2e1a"
-    BOT_BORDER = "#d4e6d4"
-    BADGE_BG   = "#e8f4e8"
-    BADGE_TEXT = "#2d5a2d"
-    BADGE_BRD  = "#b0d4b0"
-    STATUS_BG  = "#e8f4e8"
-    WARN_BG    = "#fff8e1"
-    WARN_TEXT  = "#5d4037"
-    H_COLOR    = "#1a2e1a"
-    ACCENT     = "#2d5a2d"
-    ACCENT_H   = "#4a8c4a"
-
-# ── CSS ───────────────────────────────────────────────────────────────────────
+# Farbpalette
+BG         = "#f4f7f4"
+BOT_BG     = "#ffffff"
+BOT_TEXT   = "#1a2e1a"
+BOT_BORDER = "#d4e6d4"
+BADGE_BG   = "#e8f4e8"
+BADGE_TEXT = "#2d5a2d"
+BADGE_BRD  = "#b0d4b0"
+STATUS_BG  = "#e8f4e8"
+WARN_BG    = "#fff8e1"
+WARN_TEXT  = "#5d4037"
+H_COLOR    = "#1a2e1a"
+ACCENT     = "#2d5a2d"
+ACCENT_H   = "#4a8c4a"
+# css
 st.markdown(f"""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap');
@@ -87,11 +69,28 @@ st.markdown(f"""
 
   .stApp {{ background-color: {BG}; }}
 
-  [data-testid="stSidebar"] {{
+   [data-testid="stSidebar"] {{
     background-color: #1a2e1a;
     color: #e8f0e8;
   }}
   [data-testid="stSidebar"] * {{ color: #e8f0e8 !important; }}
+
+  
+ /* Uploader-Inhalt: mittleres Grau, lesbar auf weiss UND schwarz */
+  [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] *,
+  [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] *,
+  [data-testid="stSidebar"] label[data-testid="stWidgetLabel"] * {{
+    color: #888888 !important;
+  }}
+  [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] svg,
+  [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] svg {{
+    fill: #888888 !important;
+  }}
+  [data-testid="stSidebar"] [data-testid="stTooltipIcon"] svg {{
+    stroke: #888888 !important;
+    fill: none !important;
+    color: #888888 !important;
+  }}
   [data-testid="stSidebar"] .stButton > button {{
     background-color: #2d5a2d;
     color: #e8f0e8;
@@ -166,15 +165,7 @@ st.markdown(f"""
 
 # ── Sidebar: PDF Upload ────────────────────────────────────────────────────────
 with st.sidebar:
-    # NEU: Dark Mode Toggle
-    title_col, toggle_col = st.columns([5, 1])
-    with title_col:
-        st.markdown("## 🌱 Sustainability\nReport Chatbot")
-    with toggle_col:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("☀️" if not st.session_state.dark_mode else "🌙", key="dark_toggle"):
-            st.session_state.dark_mode = not st.session_state.dark_mode
-            st.rerun()
+    st.markdown("## 🌱 Sustainability\nReport Chatbot")
 
     st.markdown("---")
     st.markdown("### PDF hochladen")
@@ -185,44 +176,44 @@ with st.sidebar:
         help="Nur PDF-Dateien werden unterstützt.",
     )
 
-if uploaded_file is not None:
-    if st.button("📄 PDF verarbeiten"):
-        with st.spinner("PDF wird verarbeitet..."):
-            try:
-                vs = VectorStore()
-                already_stored = vs.is_document_stored(uploaded_file.name)
+    if uploaded_file is not None:
+        if st.button("📄 PDF verarbeiten"):
+            with st.spinner("PDF wird verarbeitet..."):
+                try:
+                    vs = VectorStore()
+                    already_stored = vs.is_document_stored(uploaded_file.name)
 
-                pdf_bytes = uploaded_file.read()
+                    pdf_bytes = uploaded_file.read()
 
-                if already_stored:
-                    st.info(f"ℹ️ '{uploaded_file.name}' ist bereits in der DB – Chunking wird übersprungen.")
-                    vs.load_documents_for_bm25(uploaded_file.name)
-                else:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                        tmp.write(pdf_bytes)
-                        tmp_path = tmp.name
+                    if already_stored:
+                        st.info(f"ℹ️ '{uploaded_file.name}' ist bereits in der DB – Chunking wird übersprungen.")
+                        vs.load_documents_for_bm25(uploaded_file.name)
+                    else:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                            tmp.write(pdf_bytes)
+                            tmp_path = tmp.name
 
-                    chunks = load_and_chunk(tmp_path)
+                        chunks = load_and_chunk(tmp_path)
 
-                    # Echten Dateinamen statt Temp-Pfad in die Metadaten schreiben
-                    for chunk in chunks:
-                        chunk.metadata["filename"] = uploaded_file.name
+                        # Echten Dateinamen statt Temp-Pfad in die Metadaten schreiben
+                        for chunk in chunks:
+                            chunk.metadata["filename"] = uploaded_file.name
 
-                    vs.save_documents_to_db(chunks)
+                        vs.save_documents_to_db(chunks)
 
-                    st.success(f"✅ {len(chunks)} Chunks gespeichert!")
+                        st.success(f"✅ {len(chunks)} Chunks gespeichert!")
 
-                st.session_state.retriever = vs.as_hybrid_reranking_retriever(
-                    filename=uploaded_file.name, k=4
-                )
+                    st.session_state.retriever = vs.as_hybrid_reranking_retriever(
+                        filename=uploaded_file.name, k=4
+                    )
 
-                st.session_state.pdf_name = uploaded_file.name
-                st.session_state.pdf_bytes = pdf_bytes
-                st.session_state.chat_history = []
-                st.session_state.viewer_page = None
+                    st.session_state.pdf_name = uploaded_file.name
+                    st.session_state.pdf_bytes = pdf_bytes
+                    st.session_state.chat_history = []
+                    st.session_state.viewer_page = None
 
-            except Exception as e:
-                st.error(f"Fehler beim Verarbeiten: {e}")
+                except Exception as e:
+                    st.error(f"Fehler beim Verarbeiten: {e}")
 
     if st.session_state.pdf_name:
         st.markdown(
@@ -235,7 +226,7 @@ if uploaded_file is not None:
 
     if st.button("🗑️ Chat leeren"):
         st.session_state.chat_history = []
-        st.session_state.viewer_page = None   # NEU
+        st.session_state.viewer_page = None
         st.rerun()
 
     st.markdown("### JSON Export")
@@ -305,8 +296,16 @@ else:
                 )
                 # NEU: Quellen als klickbare Buttons statt statische Badges
                 if msg.get("sources"):
-                    cols = st.columns(len(msg["sources"]))
-                    for j, (col, s) in enumerate(zip(cols, msg["sources"])):
+                    # Doppelte Seiten entfernen, Reihenfolge behalten
+                    seen = set()
+                    unique_sources = []
+                    for s in msg["sources"]:
+                        if s["page"] not in seen:
+                            seen.add(s["page"])
+                            unique_sources.append(s)
+
+                    cols = st.columns(len(unique_sources))
+                    for j, (col, s) in enumerate(zip(cols, unique_sources)):
                         with col:
                             label = f'Seite {s["page"]} · {s["section"][:20]}'
                             if st.button(label, key=f"src_{i}_{j}"):
@@ -352,12 +351,11 @@ else:
                     st.session_state.viewer_page = None
                     st.rerun()
 
-            b64 = base64.b64encode(st.session_state.pdf_bytes).decode("utf-8")
             page = st.session_state.viewer_page
-            st.markdown(
-                f'<iframe src="data:application/pdf;base64,{b64}#page={page}&zoom=100" '
-                f'width="100%" height="650" '
-                f'style="border:1px solid {BOT_BORDER}; border-radius:8px;" '
-                f'type="application/pdf"></iframe>',
-                unsafe_allow_html=True,
+            pdf_viewer(
+                st.session_state.pdf_bytes,
+                width=700,
+                height=650,
+                scroll_to_page=page,
+                key=f"pdfview_{page}",
             )
