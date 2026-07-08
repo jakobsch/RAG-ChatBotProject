@@ -12,7 +12,7 @@ venv/
 data/pdfs/*
 !data/pdfs/TabellenTest.pdf
 !data/pdfs/.gitkeep
-data/chroma_huggingface__all-MiniLM-L6-v2
+data/chroma_huggingface__all-MiniLM-L6-v2/*
 
 # IDE
 .idea/
