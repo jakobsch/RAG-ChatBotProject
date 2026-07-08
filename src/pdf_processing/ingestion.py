@@ -1,11 +1,8 @@
 """
-
-
 wechsel docling auf pypdf
 ->Docling war zu langsam->durch ML Modelle
 
 Tradeoff: pypdf erkennt keine Tabellenstruktur.
-
 """
 
 from pathlib import Path
@@ -21,10 +18,7 @@ PDF_DIR = PROJECT_ROOT / "data" / "pdfs"
 def load_and_chunk(pdf_path: str, chunk_size: int = 2000, chunk_overlap: int = 200) -> list[Document]:
     """
     Liest ein PDF mit pypdf und zerlegt es in Chunks.
-
-    pdf_path: Pfad zur PDF-Datei
-    chunk_size / chunk_overlap: 1000/200
-    Rückgabe: Liste von Document-Objekten mit Metadaten (gleiche Keys wie vorher).
+    Rückgabe: Liste von Document-Objekten mit Metadaten
     """
     filename = Path(pdf_path).name
 
@@ -47,7 +41,7 @@ def load_and_chunk(pdf_path: str, chunk_size: int = 2000, chunk_overlap: int = 2
     chunks = splitter.split_documents(pages)
 
     #Schritt 3: Metadaten vereinheitlichen
-    #Saubere, einfach-typisierte Metadaten
+    #Saubere Metadaten
     total = len(chunks)
     for i, c in enumerate(chunks):
         page_no = c.metadata.get("page", "?")
