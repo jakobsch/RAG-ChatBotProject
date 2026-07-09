@@ -49,8 +49,6 @@ class VectorStore:
                     │
                 Top-K Dokumente
     """
- 
-    # Bewährte Standardmodelle – können im Konstruktor überschrieben werden
 
     DEFAULT_CROSS_ENCODER   = "cross-encoder/ms-marco-MiniLM-L-6-v2"
  
@@ -84,10 +82,6 @@ class VectorStore:
             print("Lade Cross-Encoder...", flush=True)
             self._cross_encoder = HuggingFaceCrossEncoder(model_name=self._cross_encoder_model)
         return self._cross_encoder
-    
-    # ------------------------------------------------------------------
-    # Interne Hilfsmethoden
-    # ------------------------------------------------------------------
  
     def _load_chroma(self) -> Chroma:
         """Lädt die persistente ChromaDB (lazy, wird nur einmal geladen)."""
@@ -113,10 +107,6 @@ class VectorStore:
         retriever   = BM25Retriever.from_documents(self._bm25_docs)
         retriever.k = k
         return retriever
- 
-    # ------------------------------------------------------------------
-    # Öffentliche API
-    # ------------------------------------------------------------------
  
     def _get_stored_sources(self) -> set[str]:
         """
@@ -162,36 +152,12 @@ class VectorStore:
             print("Keine Dokumente zum Speichern übergeben.")
             return
 
-        # --- Deduplizierung: bereits gespeicherte Quellen ermitteln ---
-        stored_sources = self._get_stored_sources()
-
-        new_chunks = [
-            chunk for chunk in chunks
-            if Path(chunk.metadata.get("filename", "")).name not in stored_sources
-        ]
-
-        skipped_sources = {
-            Path(chunk.metadata.get("filename", "")).name
-            for chunk in chunks
-        } - {Path(chunk.metadata.get("filename", "")).name for chunk in new_chunks}
-
-        if skipped_sources:
-            print(f"Bereits vorhanden (übersprungen): {', '.join(sorted(skipped_sources))}")
-
-        if not new_chunks:
-            print("Keine neuen Dokumente zum Speichern – alles bereits in der DB.")
-            # BM25 trotzdem mit allen Chunks aktualisieren (für laufende Session)
-            self._bm25_docs = chunks
-            return
-
         # --- Neue Chunks in ChromaDB einfügen ---
         db = self._load_chroma()
-        db.add_documents(new_chunks)
+        db.add_documents(chunks)
 
         # BM25-Kopie im Speicher mit allen Chunks aktualisieren
         self._bm25_docs = chunks
-
-        print(f"{len(new_chunks)} neue Chunks aus {len({Path(c.metadata.get('filename','')).name for c in new_chunks})} PDF(s) gespeichert.")
  
     def load_documents_for_bm25(self, filename: str) -> None:
         """
@@ -324,10 +290,3 @@ class VectorStore:
         db = self._load_chroma()
         prefixed_query = self._apply_query_prefix(query)
         return db.similarity_search(prefixed_query, k=k)
-
-if __name__ == "__main__":
-    vc = VectorStore()
-    vc._load_chroma()
-    query = "Welche Ziele hat sich das Unternehmen in Bezug auf Nachhaltigkeit gesetzt?"
-    retrieved_docs = vc.search_hybrid_reranked(query)
-    print(len(retrieved_docs))
