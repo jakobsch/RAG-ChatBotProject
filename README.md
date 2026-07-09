@@ -47,7 +47,13 @@ A web-based Retrieval Augmented Generation (RAG) application that enables users 
    GWDG_API_KEY=your_api_key_here
    GWDG_BASE_URL=https://chat-ai.academiccloud.de/v1
    GWDG_MODEL_NAME=meta-llama-3.1-70b-instruct
-   EMBEDDING_MODEL=all-MiniLM-L6-v2
+   
+   HF_EMBEDDING_MODEL=all-MiniLM-L6-v2
+   HF_TOKEN=your_huggingface_api_token
+   EMBEDDING_PROVIDER= "huggingface" oder "gwdg"
+   GWDG_EMBEDDING_MODEL=e5-mistral-7b-instruct
+   
+   
    ```
 
    Speichere anschließend die Datei.
@@ -174,5 +180,5 @@ Alternativ kann das Projekt containerisiert ausgeführt werden. Es wird nur Dock
 
 ### 🗂️ Trello
 
-Link to the Trello Board:
+Link to the Trello Board: https://trello.com/b/uKnRBWEo/rag-chatbot-application
 
